@@ -15,9 +15,16 @@ class QuerysConsult:
         #limpiamos la query de posibles markdown
         self.clean_sql(query)
         
+        #Verificamos que comience con SELECT para evitar consultas de modificación de datos
+        sql = query.strip().rstrip(";")
+        if ";" in sql:
+            raise ValueError("Multiple SQL statements are not allowed.")
+        if not re.match(r"(?is)^\s*select\b", sql):
+            raise ValueError("Only read-only SELECT queries are allowed.")
+        
         cursor = self.connection.cursor()
         try:
-            cursor.execute(self.query)
+            cursor.execute(sql)
             if cursor.description:  
                 columns = [desc[0] for desc in cursor.description]
                 rows = cursor.fetchall()

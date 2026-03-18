@@ -1,10 +1,10 @@
 # NaturalSQL
 
-En ese repositoria se piensa estudiar el desarollo de un RGA para bases de datos, el objetivo es crear un sistema que permita extraer el schema de tu base datos, la formatee para separala por tablas, una vez hecho eso, se pasara a un modelo local el cual la formatea a una cadena de vectores para una bd de datos vectoria (Pinecone, Milvus, Weaviate o Chroma)
+En este repositorio se plantea estudiar el desarrollo de un RGA para bases de datos. El objetivo es crear un sistema que permita extraer el esquema de tu base de datos y formatearlo por tablas. Una vez hecho eso, se pasará a un modelo local que lo transformará en una cadena de vectores para una base de datos vectorial (Pinecone, Milvus, Weaviate o Chroma).
 
-Problema, necesito interactuar con mi base datos usando un LLM, pero muchas librerias aunque disponen de esto, contiene funciones adiccionales lo que las hace pesadas para proyectos pequeños
+Problema: necesito interactuar con mi base de datos usando un LLM, pero muchas librerías, aunque disponen de esta funcionalidad, contienen funciones adicionales que las hacen pesadas para proyectos pequeños.
 
-Objetivo, convertir bases de datos en bases de datos vectoriales que los modelos puedan tener conexto al momento de hacer tus consultas.
+Objetivo: convertir bases de datos en bases de datos vectoriales para que los modelos puedan tener contexto al momento de realizar consultas.
 
 ### Soporte motores SQL
 - SQLServer
@@ -14,9 +14,9 @@ Objetivo, convertir bases de datos en bases de datos vectoriales que los modelos
 
 ## Estrategia
 
-#### Conexion a la base de datos
+#### Conexión a la base de datos
 
-Dentro de del modulo sql en app, se instancia una clase para realizar la conexion la base datos, determina por una URL en una .env, esto nos permite conectarlos a diversos modelos de bases de datos, esto mediante de dependencias como psycopg2, pymsql
+Dentro del módulo SQL en app, se instancia una clase para realizar la conexión a la base de datos. Esta se determina por una URL en un archivo .env, lo cual permite conectarse a distintos motores de bases de datos mediante dependencias como psycopg2 y pymysql.
 
 ```python
 return psycopg2.connect(
@@ -28,12 +28,12 @@ return psycopg2.connect(
 )
 ```
 
-dentro de este misma clase, tenemos la funcion para la desconexion de la base datos.
+Dentro de esta misma clase también se incluye la función para la desconexión de la base de datos.
 
 
 #### Schema de la base de datos
 
-Mediante una consulta de informacion a la base datos, extraemos el schema, usando **information_schema**, esto nos extrae tablas, columnas y tipos
+Mediante una consulta de información a la base de datos, extraemos el esquema usando **information_schema**, lo cual retorna tablas, columnas y tipos.
 
 ```sql
 SELECT table_name, column_name, data_type
@@ -41,11 +41,11 @@ FROM information_schema.columns
 WHERE table_schema = 'public'
 ```
 
-Esta consulta la formateamos y guardamos en un diccionario
+Esta consulta se formatea y se guarda en un diccionario.
 
-Siguiente a esto, usamos la funcion **formated_for_ia**, para formatear dicho diccionario para la IA, esto lo logramos separando la informacion de tal manera que viene nos retorno la anterior funciona, la cual separa las tablas por ",", usamoe sto para formaterar el contenido de la siguiente forma, por las tablas de la base datos, lo cual continua de sus columnas y tipos de datos de cada columna
+Después usamos la función **formated_for_ia** para adaptar dicho diccionario para la IA. Esto se logra separando la información por tablas y construyendo un contenido que incluye sus columnas y tipos de datos.
 
-De este modo creamos un diccionario una lista de todos los documentos, bloques semnanticos por cada tabla de la base de datos.
+De este modo creamos una lista de documentos, es decir, bloques semánticos por cada tabla de la base de datos.
 
 ```python
 formatted = []
@@ -60,14 +60,14 @@ return formatted
 
 #### Vectorizar la base de datos
 
-Para vectorizar la base de datos, usamos el resultado de la funcion antes vista, que formatea el producto en un schema separado por tablas. Añadimos la capa controllers para el manejo de la logica para este proceso, para facilitar este proceso, se delega el trabajo a la libreria **Chromadb** ChromaDB es una librería que permite crear y gestionar una base de datos vectorial para almacenar embeddings y realizar búsquedas semánticas. Lease mas en la documentacion sobre Sentence Trasnformer
+Para vectorizar la base de datos, usamos el resultado de la función anterior, que formatea el esquema separado por tablas. Añadimos la capa controllers para el manejo de la lógica de este proceso. Para facilitarlo, se delega el trabajo en la librería **ChromaDB**, que permite crear y gestionar una base de datos vectorial para almacenar embeddings y realizar búsquedas semánticas. Lee más en la documentación de Sentence Transformer.
 
-[Documetacion Chromadb - Sentence Transformer](https://docs.trychroma.com/integrations/embedding-models/sentence-transformer)
+[Documentación ChromaDB - Sentence Transformer](https://docs.trychroma.com/integrations/embedding-models/sentence-transformer)
 
-Usamos la funcion Setence Transformer con el modelo recomendado en la documentacion **all-MiniLM-L6-v2**, corremos este de forma local, nos generara una bd que se guardara en [metada_vdb](/metadata_vdb/), para esto primero definimos el cliente con la path que se usara, esto se puede modificar desde las .env, otros parametros como *device* y *normalize_embedding* se pueden modificar desde las .env mismamente.
+Usamos la función Sentence Transformer con el modelo recomendado en la documentación: **all-MiniLM-L6-v2**. Este corre de forma local y genera una base de datos que se guardará en [metadata_vdb](/metadata_vdb/). Para ello, primero definimos el cliente y la ruta a utilizar. Esto se puede configurar desde .env; otros parámetros como *device* y *normalize_embedding* también pueden modificarse allí.
 
-- device : Es donde se ejecuta el modelo, tiene dos valores, default = *cpu* y *cuda*
-- normalize_embeddings : Tipo boleano, de esta forma podemos decirle al modelo que necesitamos todos nuestros vectores de tamaño 1. recomendado **TRUE**
+- device: define dónde se ejecuta el modelo; tiene dos valores, por defecto: *cpu* y *cuda*.
+- normalize_embeddings: es de tipo booleano; permite pedirle al modelo vectores normalizados de tamaño 1. Recomendado: **TRUE**.
 
 ```python
 self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(
@@ -76,7 +76,7 @@ self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     device=self.config.device
 )
 ```
-Indexamos las tablas usando **index_tables**, en la cual nos traemos el parametro posterior donde retornamos las tablas separads por ",", usamos esto para rellenar nuestra db vectorial, ya con esto, usamos el metodo **search_relevant_tables**, el cual mediante la funcion reservada query, nos ayuda a buscar usando indixes vectoriales, similutes entra pregunta del usuario y la bd vectorial, esto nos retorna 3 posibles opciones, las cuales seran el contexto de nuestra llamada a nuestro modelo LLM
+Indexamos las tablas usando **index_tables**, donde usamos el parámetro que retorna las tablas separadas para rellenar nuestra base de datos vectorial. Después usamos el método **search_relevant_tables**, que mediante la función query permite buscar por índices vectoriales y similitud entre la pregunta del usuario y la base vectorial. Esto retorna 3 posibles opciones, que serán el contexto de la llamada al modelo LLM.
 
 
 
