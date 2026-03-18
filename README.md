@@ -41,56 +41,64 @@ pip install naturalsql[all-db]
 ## Uso rapido
 
 ```python
-from naturalsql import set_config, build_vector_db_from_url, extract_relevant_tables_from_vector_db
+from naturalsql import NaturalSQL
 
-# 1. Configurar la conexion
-config = set_config(
+# 1. Crear instancia con la configuracion de conexion
+nsql = NaturalSQL(
     db_url="postgresql://user:password@localhost:5432/mydb",
     db_type="postgresql",
 )
 
 # 2. Construir la base vectorial a partir del esquema de la BD
-result = build_vector_db_from_url(
-    storage_path="./metadata_vdb",
-    forced_reset=True,
-    config=config,
-)
+result = nsql.build_vector_db()
 print(f"Tablas indexadas: {result['indexed_documents']}")
+print(f"Desde cache: {result['from_cache']}")
 
 # 3. Buscar tablas relevantes para una pregunta
-tables = extract_relevant_tables_from_vector_db(
-    request="Quiero ver las ventas del ultimo mes",
-    storage_path="./metadata_vdb",
-    limit=3,
-    config=config,
-)
+tables = nsql.search("Quiero ver las ventas del ultimo mes")
 
 # 4. Usar las tablas como contexto para tu LLM preferido
 for table in tables:
     print(table)
 ```
 
+### Cache automatico
+
+La primera llamada a `search()` carga el modelo de embeddings (~2-5 segundos). Las llamadas posteriores reutilizan la instancia en memoria y responden en ~10-15ms.
+
+De igual forma, `build_vector_db()` detecta si la base vectorial ya existe. Si `forced_reset=False` (por defecto), reutiliza la coleccion existente sin reconectarse a la BD ni regenerar embeddings.
+
+```python
+# Primera busqueda: ~2-5s (carga del modelo)
+tables = nsql.search("ventas del ultimo mes")
+
+# Busquedas posteriores: ~10-15ms (modelo en cache)
+tables = nsql.search("clientes registrados hoy")
+tables = nsql.search("productos con bajo inventario")
+```
+
 ### Ejemplo completo con un LLM (Groq)
 
 ```python
-from naturalsql import set_config, build_vector_db_from_url, extract_relevant_tables_from_vector_db
+from naturalsql import NaturalSQL
 from naturalsql.utils.prompt import build_prompt
 from groq import Groq
 
-config = set_config(
-    api_key_llm="tu_api_key",
+GROQ_API_KEY = "tu_api_key"
+
+nsql = NaturalSQL(
     db_url="postgresql://user:pass@localhost:5432/mydb",
     db_type="postgresql",
 )
 
-build_vector_db_from_url(config=config, forced_reset=True)
+nsql.build_vector_db(forced_reset=True)
 
 question = "What is the first user to register?"
-tables = extract_relevant_tables_from_vector_db(request=question, config=config)
+tables = nsql.search(question)
 
 prompt = build_prompt(tables, question)
 
-client = Groq(api_key=config.api_key_llm)
+client = Groq(api_key=GROQ_API_KEY)
 response = client.chat.completions.create(
     model="llama-3.3-70b-versatile",
     messages=[{"role": "user", "content": prompt}],
@@ -100,38 +108,53 @@ print(response.choices[0].message.content)
 
 ## API
 
-### `set_config(**kwargs) -> AppConfig`
+### `NaturalSQL(**kwargs)`
 
-Crea una configuracion inmutable.
+Crea una instancia con la configuracion de conexion y embeddings.
 
 | Parametro | Tipo | Default | Descripcion |
 |---|---|---|---|
-| `api_key_llm` | `str \| None` | `None` | API key para el LLM (no usado internamente) |
 | `db_url` | `str \| None` | `None` | URL de conexion a la BD |
 | `db_type` | `str` | `""` | Motor: `postgresql`, `mysql`, `sqlite`, `sqlserver` |
 | `db_normalize_embeddings` | `bool` | `True` | Normalizar vectores de embeddings |
 | `device` | `str` | `"cpu"` | Dispositivo: `cpu` o `cuda` |
 
-### `build_vector_db_from_url(...) -> dict`
+### `nsql.build_vector_db(...) -> dict`
 
 Conecta a la BD, extrae el esquema y lo indexa en ChromaDB.
 
 | Parametro | Tipo | Default | Descripcion |
 |---|---|---|---|
 | `storage_path` | `str` | `"./metadata_vdb"` | Ruta de almacenamiento vectorial |
-| `forced_reset` | `bool` | `False` | Eliminar coleccion existente antes de indexar |
-| `config` | `AppConfig` | requerido | Configuracion de conexion |
+| `forced_reset` | `bool` | `False` | Eliminar coleccion existente antes de reindexar |
 
-### `extract_relevant_tables_from_vector_db(...) -> list`
+Retorna un `dict` con:
 
-Busca tablas semanticamente relevantes para una consulta.
+| Clave | Tipo | Descripcion |
+|---|---|---|
+| `storage_path` | `str` | Ruta utilizada |
+| `indexed_documents` | `int` | Cantidad de tablas indexadas |
+| `from_cache` | `bool` | `True` si reutilizo coleccion existente |
+
+### `nsql.search(...) -> list`
+
+Busca tablas semanticamente relevantes para una consulta en lenguaje natural.
 
 | Parametro | Tipo | Default | Descripcion |
 |---|---|---|---|
 | `request` | `str` | requerido | Pregunta en lenguaje natural |
 | `storage_path` | `str` | `"./metadata_vdb"` | Ruta de la base vectorial |
 | `limit` | `int` | `3` | Maximo de tablas a retornar |
-| `config` | `AppConfig` | requerido | Configuracion |
+
+### `build_prompt(relevant_tables, user_question) -> str`
+
+Funcion auxiliar en `naturalsql.utils.prompt` que genera un prompt listo para enviar al LLM, combinando las tablas relevantes con la pregunta del usuario.
+
+```python
+from naturalsql.utils.prompt import build_prompt
+
+prompt = build_prompt(tables, "Quiero ver las ventas del ultimo mes")
+```
 
 ## Estrategia tecnica
 
@@ -141,7 +164,9 @@ Busca tablas semanticamente relevantes para una consulta.
 
 3. **Vectorizacion**: Cada tabla se convierte en un bloque semantico y se indexa con ChromaDB usando el modelo `all-MiniLM-L6-v2` de SentenceTransformer.
 
-4. **Busqueda**: Ante una pregunta del usuario, se buscan las tablas mas relevantes por similitud semantica y se retornan como contexto para el LLM.
+4. **Busqueda**: Ante una pregunta del usuario, se buscan las tablas mas relevantes por similitud semantica (distancia <= 0.8) y se retornan como contexto para el LLM.
+
+5. **Cache**: El modelo de embeddings se carga una sola vez por instancia de `NaturalSQL`. Las busquedas posteriores reutilizan la instancia en memoria (~10-15ms vs ~2-5s).
 
 ## Licencia
 

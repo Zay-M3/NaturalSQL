@@ -12,8 +12,6 @@ class AppConfig:
         db_normalize_embeddings: Si se normalizan los embeddings vectoriales.
         device: Dispositivo para el modelo de embeddings (cpu o cuda).
     """
-
-    api_key_llm: str | None
     db_url: str | None
     db_type: str
     db_normalize_embeddings: bool

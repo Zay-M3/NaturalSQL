@@ -1,20 +1,39 @@
+import os
+
 import chromadb
 from chromadb.utils import embedding_functions
 from naturalsql.utils.config import AppConfig
 
 
 class VectorManager:
+
+    @staticmethod
+    def collection_exists(storage_path: str) -> int:
+        """Verifica si ya existe una coleccion indexada sin cargar el modelo de embeddings.
+
+        Solo abre el PersistentClient de ChromaDB y cuenta los documentos existentes.
+        No inicializa SentenceTransformer.
+
+        Args:
+            storage_path: Ruta donde se almacena la base vectorial.
+
+        Returns:
+            int: Cantidad de documentos indexados, 0 si no existe la coleccion.
+        """
+        if not os.path.isdir(storage_path):
+            return 0
+        try:
+            client = chromadb.PersistentClient(path=storage_path)
+            collection = client.get_collection("db_schema")
+            return collection.count()
+        except Exception:
+            return 0
+        
     def __init__(self, storage_path="./metadata_vdb", force_reset=False, config: AppConfig | None = None):
         if config is None:
             raise ValueError("VectorManager requiere una instancia de AppConfig en config.")
         self.config = config
         self.client = chromadb.PersistentClient(path=storage_path)
-        self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2",
-            normalize_embeddings=self.config.db_normalize_embeddings,
-            device=self.config.device,
-        )
-        self.collection = self.client.get_or_create_collection("db_schema", embedding_function=self.ef)
 
         if force_reset:
             try:
@@ -24,6 +43,11 @@ class VectorManager:
             except Exception:
                 pass
 
+        self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2",
+            normalize_embeddings=self.config.db_normalize_embeddings,
+            device=self.config.device,
+        )
         self.collection = self.client.get_or_create_collection(
             name="db_schema",
             embedding_function=self.ef,
