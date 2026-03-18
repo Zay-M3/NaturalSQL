@@ -18,7 +18,7 @@ __pycache__/
 metadata_vdb/
 
 # Archivos de pruebas locales
-app/main.py
+main.py
 naturalsql/main.py
 main.py*
 
@@ -28,5 +28,3 @@ build/
 *.egg-info/
 *.egg
 
-# Carpeta app/ legacy (reemplazada por naturalsql/)
-app/

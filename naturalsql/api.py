@@ -4,114 +4,175 @@ from naturalsql.sql.sqlschema import SQLSchemaExtractor
 from naturalsql.utils.config import AppConfig
 
 
-def set_config(
-    *,
-    api_key_llm: str | None = None,
-    db_url: str | None = None,
-    db_type: str = "",
-    db_normalize_embeddings: bool = True,
-    device: str = "cpu",
-) -> AppConfig:
-    """Crea y retorna una instancia de AppConfig con la configuracion proporcionada.
+class NaturalSQL:
+    """Clase principal de la libreria NaturalSQL.
 
-    Args:
-        api_key_llm: API key para el modelo LLM (opcional, no usado internamente por la libreria).
-        db_url: URL de conexion a la base de datos (e.g. postgresql://user:pass@host:port/db).
-        db_type: Tipo de motor de base de datos (postgresql, mysql, sqlite, sqlserver).
-        db_normalize_embeddings: Si se normalizan los embeddings vectoriales.
-        device: Dispositivo para el modelo de embeddings (cpu o cuda).
+    Encapsula la configuracion, la construccion de la base vectorial
+    y la busqueda de tablas relevantes por lenguaje natural.
 
-    Returns:
-        AppConfig: Instancia de configuracion inmutable.
-    """
-    return AppConfig(
-        api_key_llm=api_key_llm,
-        db_url=db_url,
-        db_type=(db_type or "").strip().lower(),
-        db_normalize_embeddings=bool(db_normalize_embeddings),
-        device=(device or "cpu").strip().lower(),
-    )
+    Uso tipico::
 
+        from naturalsql import NaturalSQL
 
-def build_vector_db_from_url(
-    storage_path: str = "./metadata_vdb",
-    forced_reset: bool = False,
-    config: AppConfig | None = None,
-) -> dict:
-    """Construye e indexa la base vectorial a partir de una URL de base de datos.
-
-    Conecta a la base de datos, extrae el esquema de tablas y columnas,
-    y lo indexa en una base de datos vectorial ChromaDB para busquedas semanticas.
-
-    Args:
-        storage_path: Ruta donde se almacena la base vectorial.
-        forced_reset: Si es True, elimina la coleccion existente antes de indexar.
-        config: Instancia de AppConfig con la configuracion de conexion.
-
-    Returns:
-        dict: Diccionario con 'storage_path' y 'indexed_documents' (cantidad de tablas indexadas).
-
-    Raises:
-        ValueError: Si config es None.
-    """
-    if config is None:
-        raise ValueError("build_vector_db_from_url requiere una instancia de AppConfig en config.")
-
-    conn = Connection.from_config(config)
-    conn.connect()
-
-    try:
-        schema_extractor = SQLSchemaExtractor(conn.connection, db_type=config.db_type)
-        schema = schema_extractor.extract_schema()
-        formatted_schema = schema_extractor.formated_for_ia(schema)
-
-        vector_manager = VectorManager(
-            storage_path=storage_path,
-            force_reset=forced_reset,
-            config=config,
+        nsql = NaturalSQL(
+            db_url="postgresql://user:pass@host:5432/mydb",
+            db_type="postgresql",
         )
-        vector_manager.index_tables(formatted_schema)
 
-        return {
-            "storage_path": storage_path,
-            "indexed_documents": len(formatted_schema),
-        }
-
-    finally:
-        conn.disconnect()
-
-
-def extract_relevant_tables_from_vector_db(
-    request: str,
-    storage_path: str = "./metadata_vdb",
-    limit: int = 3,
-    config: AppConfig | None = None,
-) -> list:
-    """Extrae las tablas relevantes para una solicitud dada desde la base vectorial.
-
-    Busca en la base vectorial las tablas cuyo esquema sea semanticamente
-    similar a la solicitud del usuario.
-
-    Args:
-        request: Pregunta o solicitud en lenguaje natural.
-        storage_path: Ruta donde se almacena la base vectorial.
-        limit: Numero maximo de tablas a retornar.
-        config: Instancia de AppConfig con la configuracion.
-
-    Returns:
-        list: Lista de descripciones de tablas relevantes.
-
-    Raises:
-        ValueError: Si config es None.
+        result = nsql.build_vector_db()
+        tables = nsql.search("customers who made purchases")
     """
-    if config is None:
-        raise ValueError("extract_relevant_tables_from_vector_db requiere una instancia de AppConfig en config.")
 
-    vector_manager = VectorManager(
-        storage_path=storage_path,
-        force_reset=False,
-        config=config,
-    )
-    relevant_tables = vector_manager.search_relevant_tables(request, limit=limit)
+    def __init__(
+        self,
+        *,
+        db_url: str | None = None,
+        db_type: str = "",
+        db_normalize_embeddings: bool = True,
+        device: str = "cpu",
+    ) -> None:
+        """Crea una instancia de NaturalSQL con la configuracion proporcionada.
 
-    return relevant_tables
+        Args:
+            db_url: URL de conexion a la base de datos
+                    (e.g. postgresql://user:pass@host:port/db).
+            db_type: Tipo de motor de base de datos
+                     (postgresql, mysql, sqlite, sqlserver).
+            api_key_llm: API key para el modelo LLM (opcional, no usado
+                         internamente por la libreria).
+            db_normalize_embeddings: Si se normalizan los embeddings vectoriales.
+            device: Dispositivo para el modelo de embeddings (cpu o cuda).
+        """
+        self.config = AppConfig(
+            db_url=db_url,
+            db_type=(db_type or "").strip().lower(),
+            db_normalize_embeddings=bool(db_normalize_embeddings),
+            device=(device or "cpu").strip().lower(),
+        )
+
+        # Cached VectorManager instance — avoids reloading SentenceTransformer
+        # on every search call.  Keyed by (storage_path,).
+        self._vector_manager: VectorManager | None = None
+        self._vm_storage_path: str | None = None
+
+    # ── Private helpers ───────────────────────────────────────────
+
+    def _get_vector_manager(self, storage_path: str) -> VectorManager:
+        """Return cached VectorManager, creating one if needed."""
+        if (
+            self._vector_manager is not None
+            and self._vm_storage_path == storage_path
+        ):
+            return self._vector_manager
+
+        self._vector_manager = VectorManager(
+            storage_path=storage_path,
+            force_reset=False,
+            config=self.config,
+        )
+        self._vm_storage_path = storage_path
+        return self._vector_manager
+
+    def _invalidate_cache(self) -> None:
+        """Clear the cached VectorManager so the next call creates a fresh one."""
+        self._vector_manager = None
+        self._vm_storage_path = None
+
+    # ── Public API ────────────────────────────────────────────────
+
+    def build_vector_db(
+        self,
+        storage_path: str = "./metadata_vdb",
+        forced_reset: bool = False,
+    ) -> dict:
+        """Construye e indexa la base vectorial a partir de la URL de base de datos.
+
+        Si la base vectorial ya existe en *storage_path* y *forced_reset* es
+        ``False``, reutiliza la coleccion existente sin reconectarse a la BD
+        ni regenerar embeddings.
+
+        Args:
+            storage_path: Ruta donde se almacena la base vectorial.
+            forced_reset: Si es True, elimina la coleccion existente y la
+                          reconstruye desde cero.
+
+        Returns:
+            dict con:
+                - ``storage_path``: Ruta de almacenamiento utilizada.
+                - ``indexed_documents``: Cantidad de tablas indexadas.
+                - ``from_cache``: True si se reutilizo una coleccion existente.
+
+        Raises:
+            ValueError: Si db_url no fue proporcionada en el constructor.
+        """
+        if not self.config.db_url:
+            raise ValueError(
+                "build_vector_db requiere db_url. "
+                "Proporcionala al crear la instancia de NaturalSQL."
+            )
+
+        # Invalidate cache when rebuilding so subsequent searches use
+        # the fresh collection.
+        if forced_reset:
+            self._invalidate_cache()
+
+        if not forced_reset:
+            existing_count = VectorManager.collection_exists(storage_path)
+            if existing_count > 0:
+                return {
+                    "storage_path": storage_path,
+                    "indexed_documents": existing_count,
+                    "from_cache": True,
+                }
+
+        conn = Connection.from_config(self.config)
+        conn.connect()
+
+        try:
+            extractor = SQLSchemaExtractor(
+                conn.connection, db_type=self.config.db_type,
+            )
+            schema = extractor.extract_schema()
+            formatted = extractor.formated_for_ia(schema)
+
+            vm = VectorManager(
+                storage_path=storage_path,
+                force_reset=forced_reset,
+                config=self.config,
+            )
+            vm.index_tables(formatted)
+
+            # After a forced rebuild, store the new VectorManager in cache
+            # so the next search call reuses it immediately.
+            self._vector_manager = vm
+            self._vm_storage_path = storage_path
+
+            return {
+                "storage_path": storage_path,
+                "indexed_documents": len(formatted),
+                "from_cache": False,
+            }
+        finally:
+            conn.disconnect()
+
+    def search(
+        self,
+        request: str,
+        storage_path: str = "./metadata_vdb",
+        limit: int = 3,
+    ) -> list:
+        """Busca tablas relevantes para una solicitud en lenguaje natural.
+
+        Utiliza la base vectorial previamente construida con
+        :meth:`build_vector_db`.
+
+        Args:
+            request: Pregunta o solicitud en lenguaje natural.
+            storage_path: Ruta donde se almacena la base vectorial.
+            limit: Numero maximo de tablas a retornar.
+
+        Returns:
+            list: Descripciones de tablas relevantes.
+        """
+        vm = self._get_vector_manager(storage_path)
+        return vm.search_relevant_tables(request, limit=limit)
