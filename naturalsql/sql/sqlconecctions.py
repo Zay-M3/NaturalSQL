@@ -1,7 +1,8 @@
 from urllib.parse import parse_qs, unquote, urlparse
 
-from app.utils import constans as const
-from app.utils.config import AppConfig
+from naturalsql.utils import constans as const
+from naturalsql.utils.config import AppConfig
+
 
 class Connection:
     def __init__(self, connection_string):
@@ -11,9 +12,9 @@ class Connection:
     @classmethod
     def from_config(cls, config: AppConfig):
         """Create a connection instance using an injected AppConfig object."""
-        connection_string = config.db_url
-        if connection_string:
-            return cls(connection_string)
+
+        if (config.db_url is None) or (config.db_type is None):
+            raise ValueError("DB_URL y DB_TYPE son requeridos en la configuracion.")
 
         db_type = config.db_type
         if db_type not in const.CONNECTION_QLS:
@@ -22,20 +23,9 @@ class Connection:
                 f"{', '.join(const.CONNECTION_QLS.keys())}"
             )
 
-        connection_template = const.CONNECTION_QLS[db_type]
-        connection_string = connection_template.format(
-            user=config.db_user,
-            password=config.db_password,
-            host=config.db_host,
-            port=config.db_port,
-            database=config.db_name,
-        )
-        return cls(connection_string)
-
-    @classmethod
-    def from_env(cls):
-        """Backwards-compatible helper that builds AppConfig from environment."""
-        return cls.from_config(AppConfig.from_env())
+        connection_string = config.db_url
+        if connection_string:
+            return cls(connection_string)
 
     def connect(self):
         """Open a real DB connection based on the URL scheme."""
@@ -100,7 +90,7 @@ class Connection:
 
     def _connect_sqlserver(self, parsed):
         import pyodbc
-        
+
         query_params = parse_qs(parsed.query)
         driver = query_params.get("driver", ["ODBC Driver 17 for SQL Server"])[0]
         conn_str = (
@@ -114,7 +104,7 @@ class Connection:
         return pyodbc.connect(conn_str)
 
     def disconnect(self):
-        """Cierra la conexion a la base de datos y formatea a None la variable de conexion para evitar conexiones abiertas."""
+        """Cierra la conexion a la base de datos."""
         if self.connection:
             self.connection.close()
             self.connection = None

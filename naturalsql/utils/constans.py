@@ -3,7 +3,7 @@ CONNECTION_QLS = {
     "mysql": "mysql+pymysql://{user}:{password}@{host}:{port}/{database}",
     "sqlite": "sqlite:///{database}",
     "sqlserver": "mssql+pyodbc://{user}:{password}@{host}:{port}/{database}?driver=ODBC+Driver+17+for+SQL+Server",
-}   
+}
 
 IGNORE_TABLE = {
     # Migraciones/versionado

@@ -1,91 +1,148 @@
 # NaturalSQL
 
-En este repositorio se plantea estudiar el desarrollo de un RGA para bases de datos. El objetivo es crear un sistema que permita extraer el esquema de tu base de datos y formatearlo por tablas. Una vez hecho eso, se pasará a un modelo local que lo transformará en una cadena de vectores para una base de datos vectorial (Pinecone, Milvus, Weaviate o Chroma).
+Libreria ligera para convertir el esquema de tu base de datos SQL en una base de datos vectorial, permitiendo que modelos LLM tengan contexto para generar consultas SQL precisas a partir de lenguaje natural.
 
-Problema: necesito interactuar con mi base de datos usando un LLM, pero muchas librerías, aunque disponen de esta funcionalidad, contienen funciones adicionales que las hacen pesadas para proyectos pequeños.
+## Problema
 
-Objetivo: convertir bases de datos en bases de datos vectoriales para que los modelos puedan tener contexto al momento de realizar consultas.
+Necesito interactuar con mi base de datos usando un LLM, pero muchas librerias contienen funcionalidades adicionales que las hacen pesadas para proyectos pequenos.
 
-### Soporte motores SQL
-- SQLServer
+## Solucion
+
+NaturalSQL extrae el esquema de tu base de datos, lo vectoriza con ChromaDB + SentenceTransformer (`all-MiniLM-L6-v2`), y usa busqueda por similitud semantica para proporcionar contexto relevante al LLM.
+
+## Instalacion
+
+```bash
+# Instalacion base
+pip install naturalsql
+
+# Con soporte para PostgreSQL
+pip install naturalsql[postgresql]
+
+# Con soporte para MySQL
+pip install naturalsql[mysql]
+
+# Con soporte para SQL Server
+pip install naturalsql[sqlserver]
+
+# Con soporte para todos los motores
+pip install naturalsql[all-db]
+```
+
+> SQLite esta incluido en la libreria estandar de Python, no requiere dependencias adicionales.
+
+## Motores SQL soportados
+
 - PostgreSQL
 - MySQL
+- SQL Server
 - SQLite
 
-## Estrategia
-
-#### Conexión a la base de datos
-
-Dentro del módulo SQL en app, se instancia una clase para realizar la conexión a la base de datos. Esta se determina por una URL en un archivo .env, lo cual permite conectarse a distintos motores de bases de datos mediante dependencias como psycopg2 y pymysql.
+## Uso rapido
 
 ```python
-return psycopg2.connect(
-    host=parsed.hostname,
-    port=parsed.port or 5432,
-    user=unquote(parsed.username or ""),
-    password=unquote(parsed.password or ""),
-    dbname=parsed.path.lstrip("/"),
+from naturalsql import set_config, build_vector_db_from_url, extract_relevant_tables_from_vector_db
+
+# 1. Configurar la conexion
+config = set_config(
+    db_url="postgresql://user:password@localhost:5432/mydb",
+    db_type="postgresql",
 )
-```
 
-Dentro de esta misma clase también se incluye la función para la desconexión de la base de datos.
-
-
-#### Schema de la base de datos
-
-Mediante una consulta de información a la base de datos, extraemos el esquema usando **information_schema**, lo cual retorna tablas, columnas y tipos.
-
-```sql
-SELECT table_name, column_name, data_type
-FROM information_schema.columns
-WHERE table_schema = 'public'
-```
-
-Esta consulta se formatea y se guarda en un diccionario.
-
-Después usamos la función **formated_for_ia** para adaptar dicho diccionario para la IA. Esto se logra separando la información por tablas y construyendo un contenido que incluye sus columnas y tipos de datos.
-
-De este modo creamos una lista de documentos, es decir, bloques semánticos por cada tabla de la base de datos.
-
-```python
-formatted = []
-for table, columns in schema.items():
-    column_descriptions = ", ".join(f"{col} ({dtype})" for col, dtype in columns) # Separamos el apartado por las "," que nos indica las tablas, col (Columna) dtypo (Tipo de dato)
-    # Creamos un bloque semántico por cada tabla
-    doc = f"Table name: {table}. It has the following columns: {column_descriptions}"
-    formatted.append(doc)
-
-return formatted
-```
-
-#### Vectorizar la base de datos
-
-Para vectorizar la base de datos, usamos el resultado de la función anterior, que formatea el esquema separado por tablas. Añadimos la capa controllers para el manejo de la lógica de este proceso. Para facilitarlo, se delega el trabajo en la librería **ChromaDB**, que permite crear y gestionar una base de datos vectorial para almacenar embeddings y realizar búsquedas semánticas. Lee más en la documentación de Sentence Transformer.
-
-[Documentación ChromaDB - Sentence Transformer](https://docs.trychroma.com/integrations/embedding-models/sentence-transformer)
-
-Usamos la función Sentence Transformer con el modelo recomendado en la documentación: **all-MiniLM-L6-v2**. Este corre de forma local y genera una base de datos que se guardará en [metadata_vdb](/metadata_vdb/). Para ello, primero definimos el cliente y la ruta a utilizar. Esto se puede configurar desde .env; otros parámetros como *device* y *normalize_embedding* también pueden modificarse allí.
-
-- device: define dónde se ejecuta el modelo; tiene dos valores, por defecto: *cpu* y *cuda*.
-- normalize_embeddings: es de tipo booleano; permite pedirle al modelo vectores normalizados de tamaño 1. Recomendado: **TRUE**.
-
-```python
-self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name="all-MiniLM-L6-v2",
-    normalize_embeddings=self.config.db_normalize_embeddings,
-    device=self.config.device
+# 2. Construir la base vectorial a partir del esquema de la BD
+result = build_vector_db_from_url(
+    storage_path="./metadata_vdb",
+    forced_reset=True,
+    config=config,
 )
+print(f"Tablas indexadas: {result['indexed_documents']}")
+
+# 3. Buscar tablas relevantes para una pregunta
+tables = extract_relevant_tables_from_vector_db(
+    request="Quiero ver las ventas del ultimo mes",
+    storage_path="./metadata_vdb",
+    limit=3,
+    config=config,
+)
+
+# 4. Usar las tablas como contexto para tu LLM preferido
+for table in tables:
+    print(table)
 ```
-Indexamos las tablas usando **index_tables**, donde usamos el parámetro que retorna las tablas separadas para rellenar nuestra base de datos vectorial. Después usamos el método **search_relevant_tables**, que mediante la función query permite buscar por índices vectoriales y similitud entre la pregunta del usuario y la base vectorial. Esto retorna 3 posibles opciones, que serán el contexto de la llamada al modelo LLM.
 
+### Ejemplo completo con un LLM (Groq)
 
+```python
+from naturalsql import set_config, build_vector_db_from_url, extract_relevant_tables_from_vector_db
+from naturalsql.utils.prompt import build_prompt
+from groq import Groq
 
+config = set_config(
+    api_key_llm="tu_api_key",
+    db_url="postgresql://user:pass@localhost:5432/mydb",
+    db_type="postgresql",
+)
 
+build_vector_db_from_url(config=config, forced_reset=True)
 
+question = "What is the first user to register?"
+tables = extract_relevant_tables_from_vector_db(request=question, config=config)
 
+prompt = build_prompt(tables, question)
 
+client = Groq(api_key=config.api_key_llm)
+response = client.chat.completions.create(
+    model="llama-3.3-70b-versatile",
+    messages=[{"role": "user", "content": prompt}],
+)
+print(response.choices[0].message.content)
+```
 
+## API
 
+### `set_config(**kwargs) -> AppConfig`
 
+Crea una configuracion inmutable.
 
+| Parametro | Tipo | Default | Descripcion |
+|---|---|---|---|
+| `api_key_llm` | `str \| None` | `None` | API key para el LLM (no usado internamente) |
+| `db_url` | `str \| None` | `None` | URL de conexion a la BD |
+| `db_type` | `str` | `""` | Motor: `postgresql`, `mysql`, `sqlite`, `sqlserver` |
+| `db_normalize_embeddings` | `bool` | `True` | Normalizar vectores de embeddings |
+| `device` | `str` | `"cpu"` | Dispositivo: `cpu` o `cuda` |
 
+### `build_vector_db_from_url(...) -> dict`
+
+Conecta a la BD, extrae el esquema y lo indexa en ChromaDB.
+
+| Parametro | Tipo | Default | Descripcion |
+|---|---|---|---|
+| `storage_path` | `str` | `"./metadata_vdb"` | Ruta de almacenamiento vectorial |
+| `forced_reset` | `bool` | `False` | Eliminar coleccion existente antes de indexar |
+| `config` | `AppConfig` | requerido | Configuracion de conexion |
+
+### `extract_relevant_tables_from_vector_db(...) -> list`
+
+Busca tablas semanticamente relevantes para una consulta.
+
+| Parametro | Tipo | Default | Descripcion |
+|---|---|---|---|
+| `request` | `str` | requerido | Pregunta en lenguaje natural |
+| `storage_path` | `str` | `"./metadata_vdb"` | Ruta de la base vectorial |
+| `limit` | `int` | `3` | Maximo de tablas a retornar |
+| `config` | `AppConfig` | requerido | Configuracion |
+
+## Estrategia tecnica
+
+1. **Conexion**: Se conecta a la BD usando la URL proporcionada con drivers nativos (psycopg2, pymysql, sqlite3, pyodbc).
+
+2. **Extraccion de esquema**: Consulta `information_schema.columns` (PostgreSQL, MySQL, SQL Server) o `PRAGMA table_info` (SQLite) para obtener tablas, columnas y tipos de datos.
+
+3. **Vectorizacion**: Cada tabla se convierte en un bloque semantico y se indexa con ChromaDB usando el modelo `all-MiniLM-L6-v2` de SentenceTransformer.
+
+4. **Busqueda**: Ante una pregunta del usuario, se buscan las tablas mas relevantes por similitud semantica y se retornan como contexto para el LLM.
+
+## Licencia
+
+[Apache License 2.0](LICENSE)
