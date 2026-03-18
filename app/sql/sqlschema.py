@@ -1,5 +1,7 @@
 #En este archivo extraemos el esquema de la base de datos a partir conexion a la base de datos, esto es necesario para que el modelo pueda generar consultas SQL correctas.
 
+from app.utils import constans as const
+
 class SQLSchemaExtractor:
     """Inyectmos la conexion de la bd para extraer el esquema de la base de datos"""
     def __init__(self, connection):
@@ -22,6 +24,8 @@ class SQLSchemaExtractor:
             schema_info = cursor.fetchall()
             schema = {}
             for table_name, column_name, data_type in schema_info:
+                if table_name.lower() in const.IGNORE_TABLE:
+                    continue
                 if table_name not in schema:
                     schema[table_name] = []
                 schema[table_name].append((column_name, data_type))
@@ -41,6 +45,8 @@ class SQLSchemaExtractor:
         formatted = []
         for table, columns in schema.items():
             column_descriptions = ", ".join(f"{col} ({dtype})" for col, dtype in columns)
-            formatted.append(f"{table}: {column_descriptions}")
-        return "\n".join(formatted)
+            # Creamos un bloque semántico por cada tabla
+            doc = f"Table name: {table}. It has the following columns: {column_descriptions}"
+            formatted.append(doc)
+        return formatted
         

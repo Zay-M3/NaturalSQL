@@ -45,12 +45,39 @@ Esta consulta la formateamos y guardamos en un diccionario
 
 Siguiente a esto, usamos la funcion **formated_for_ia**, para formatear dicho diccionario para la IA, esto lo logramos separando la informacion de tal manera que viene nos retorno la anterior funciona, la cual separa las tablas por ",", usamoe sto para formaterar el contenido de la siguiente forma, por las tablas de la base datos, lo cual continua de sus columnas y tipos de datos de cada columna
 
+De este modo creamos un diccionario una lista de todos los documentos, bloques semnanticos por cada tabla de la base de datos.
+
 ```python
 formatted = []
 for table, columns in schema.items():
     column_descriptions = ", ".join(f"{col} ({dtype})" for col, dtype in columns) # Separamos el apartado por las "," que nos indica las tablas, col (Columna) dtypo (Tipo de dato)
-    formatted.append(f"{table}: {column_descriptions}")
+    # Creamos un bloque semántico por cada tabla
+    doc = f"Table name: {table}. It has the following columns: {column_descriptions}"
+    formatted_docs.append(doc)
+
+    return formatted
 ```
+
+#### Vectorizar la base de datos
+
+Para vectorizar la base de datos, usamos el resultado de la funcion antes vista, que formatea el producto en un schema separado por tablas. Añadimos la capa controllers para el manejo de la logica para este proceso, para facilitar este proceso, se delega el trabajo a la libreria **Chromadb** ChromaDB es una librería que permite crear y gestionar una base de datos vectorial para almacenar embeddings y realizar búsquedas semánticas. Lease mas en la documentacion sobre Sentence Trasnformer
+
+[Documetacion Chromadb - Sentence Transformer](https://docs.trychroma.com/integrations/embedding-models/sentence-transformer)
+
+Usamos la funcion Setence Transformer con el modelo recomendado en la documentacion **all-MiniLM-L6-v2**, corremos este de forma local, nos generara una bd que se guardara en [metada_vdb](/metadata_vdb/), para esto primero definimos el cliente con la path que se usara, esto se puede modificar desde las .env, otros parametros como *device* y *normalize_embedding* se pueden modificar desde las .env mismamente.
+
+- device : Es donde se ejecuta el modelo, tiene dos valores, default = *cpu* y *cuda*
+- normalize_embeddings : Tipo boleano, de esta forma podemos decirle al modelo que necesitamos todos nuestros vectores de tamaño 1. recomendado **TRUE**
+
+```python
+self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2",
+    normalize_embeddings=self.config.db_normalize_embeddings,
+    device=self.config.device
+)
+```
+Indexamos las tablas usando **index_tables**, en la cual nos traemos el parametro posterior donde retornamos las tablas separads por ",", usamos esto para rellenar nuestra db vectorial, ya con esto, usamos el metodo **search_relevant_tables**, el cual mediante la funcion reservada query, nos ayuda a buscar usando indixes vectoriales, similutes entra pregunta del usuario y la bd vectorial, esto nos retorna 3 posibles opciones, las cuales seran el contexto de nuestra llamada a nuestro modelo LLM
+
 
 
 
