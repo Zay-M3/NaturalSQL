@@ -53,9 +53,9 @@ for table, columns in schema.items():
     column_descriptions = ", ".join(f"{col} ({dtype})" for col, dtype in columns) # Separamos el apartado por las "," que nos indica las tablas, col (Columna) dtypo (Tipo de dato)
     # Creamos un bloque semántico por cada tabla
     doc = f"Table name: {table}. It has the following columns: {column_descriptions}"
-    formatted_docs.append(doc)
+    formatted.append(doc)
 
-    return formatted
+return formatted
 ```
 
 #### Vectorizar la base de datos

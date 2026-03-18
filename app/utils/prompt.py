@@ -19,7 +19,6 @@ def build_prompt(relevant_tables, user_question):
     ### Rules:
     - Only return the SQL query, no explanations.
     - Use the table and column names exactly as defined in the schema.
-    - If the user asks for "all users", use the 'auth_user' table.
     
     ### Question:
     {user_question}

@@ -19,7 +19,7 @@ class AppConfig:
     def from_env(cls) -> "AppConfig":
         load_dotenv()  
         return cls(
-            api_key_llm=os.getenv("APY_KEY_LLM"),
+            api_key_llm=os.getenv("API_KEY_LLM"),
             db_url=os.getenv("DB_URL"),
             db_type=(os.getenv("DB_TYPE", "") or "").lower().strip(),
             db_user=os.getenv("DB_USER", "") or "",

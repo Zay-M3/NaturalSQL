@@ -16,8 +16,10 @@ class VectorManager:
             try:
                 self.client.delete_collection("db_schema")
                 print("--- [INFO] Base de datos de vectores limpiada correctamente ---")
-            except:
-                pass
+            except ValueError:
+                print("--- [INFO] No se encontró la colección 'db_schema' para eliminar ---")
+            except Exception as e:
+                print(f"--- [ERROR] Ocurrió un error al eliminar la colección 'db_schema': {e} ---")
         
         self.collection = self.client.get_or_create_collection(
             name="db_schema", 
@@ -26,9 +28,9 @@ class VectorManager:
 
     def index_tables(self, tables_list):
         """Indexa la lista de tablas en la base de datos, esto permite que la IA pueda buscar las tablas relevantes para una consulta dada, mejorando la capacidad de generar consultas SQL correctas."""
-        self.collection.add(
+        self.collection.upsert(
             documents=tables_list,
-            ids=[f"t_{i}" for i in range(len(tables_list))]
+            ids=[f"table::{table_name}" for table_name in tables_list]
         )
         
 

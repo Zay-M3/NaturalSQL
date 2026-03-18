@@ -43,10 +43,15 @@ def main():
         
 
         query_executor = Query(conn.connection)
-        results = query_executor.execute_query(result)
+        columns, rows = query_executor.execute_query(result)
         print("Query Results:")
-        for row in results:
-            print(row)
+        if columns and rows:
+            print(columns)
+            for row in rows:
+                print(row)
+        else:
+            print("Query executed successfully, no results to display.")
+            
 
         
     except Exception as e:
