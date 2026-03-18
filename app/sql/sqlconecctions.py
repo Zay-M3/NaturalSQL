@@ -1,7 +1,7 @@
-import os
 from urllib.parse import parse_qs, unquote, urlparse
 
 from app.utils import constans as const
+from app.utils.config import AppConfig
 
 class Connection:
     def __init__(self, connection_string):
@@ -9,21 +9,13 @@ class Connection:
         self.connection = None
 
     @classmethod
-    def from_env(cls):
-        """Create a connection instance using DB_URL, esto para simplificar la configuracion de la conexion a la base de datos, permitiendo que el usuario solo tenga que configurar las variables de entorno y no preocuparse por el formato de la URL de conexion."""
-        try:
-            from dotenv import load_dotenv
-
-            load_dotenv()
-        except Exception:
-            # If python-dotenv is not installed, continue with existing env vars.
-            pass
-
-        connection_string = os.getenv("DB_URL")
+    def from_config(cls, config: AppConfig):
+        """Create a connection instance using an injected AppConfig object."""
+        connection_string = config.db_url
         if connection_string:
             return cls(connection_string)
 
-        db_type = (os.getenv("DB_TYPE") or "").lower().strip()
+        db_type = config.db_type
         if db_type not in const.CONNECTION_QLS:
             raise ValueError(
                 "DB_TYPE no soportado o ausente. Use DB_URL o uno de: "
@@ -32,13 +24,18 @@ class Connection:
 
         connection_template = const.CONNECTION_QLS[db_type]
         connection_string = connection_template.format(
-            user=os.getenv("DB_USER", ""),
-            password=os.getenv("DB_PASSWORD", ""),
-            host=os.getenv("DB_HOST", "localhost"),
-            port=os.getenv("DB_PORT", ""),
-            database=os.getenv("DB_NAME", ""),
+            user=config.db_user,
+            password=config.db_password,
+            host=config.db_host,
+            port=config.db_port,
+            database=config.db_name,
         )
         return cls(connection_string)
+
+    @classmethod
+    def from_env(cls):
+        """Backwards-compatible helper that builds AppConfig from environment."""
+        return cls.from_config(AppConfig.from_env())
 
     def connect(self):
         """Open a real DB connection based on the URL scheme."""
