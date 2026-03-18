@@ -1,11 +1,32 @@
-.env
+# Entorno virtual
 /venv*
 venv/
 
+# Cache Python
 __pycache__/
 *.pyc
+*.pyo
+
+# Sistema
 .DS_Store
 
+# Secretos
 .env
+*.env
 
+# Base de datos vectorial (generada en runtime)
 metadata_vdb/
+
+# Archivos de pruebas locales
+app/main.py
+naturalsql/main.py
+main.py*
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Carpeta app/ legacy (reemplazada por naturalsql/)
+app/

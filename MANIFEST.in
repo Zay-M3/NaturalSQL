@@ -1,0 +1,17 @@
+# Include
+include LICENSE
+include README.md
+include pyproject.toml
+recursive-include naturalsql *.py
+
+# Exclude
+exclude app
+recursive-exclude app *
+recursive-exclude metadata_vdb *
+recursive-exclude * __pycache__ *.pyc *.pyo
+exclude naturalsql/main.py
+exclude naturalsql/.env
+exclude naturalsql/requirements.txt
+global-exclude *.env
+global-exclude main.py
+global-exclude requirements.txt
