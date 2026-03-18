@@ -9,3 +9,7 @@ __pycache__/
 .env
 
 metadata_vdb/
+
+app/main.py
+
+main.py*
