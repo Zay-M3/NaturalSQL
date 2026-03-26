@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "naturalsql"
-version = "0.2.0"
+version = "1.2.3"
 description = "Generate SQL from natural language using DB schema + vector retrieval"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,24 +12,46 @@ license = "Apache-2.0"
 authors = [
   { name = "NaturalSQL Contributors" }
 ]
-dependencies = [
-  "chromadb>=0.5.0",
-  "sentence-transformers>=2.2.0",
+
+keywords = ["sqlite", "sqlserver", "postgresql", "ai", "artifical-intelligence", "chromadb", "sentence-transformers", "gemini", "mysql"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
+
+dependencies = []
 
 [project.optional-dependencies]
 postgresql = ["psycopg2-binary>=2.9.0"]
 mysql = ["pymysql>=1.1.0"]
 sqlserver = ["pyodbc>=5.1.0"]
+chroma-local = ["chromadb>=1.5.5", "sentence-transformers>=5.3.0"]
+sqlite-local = ["sentence-transformers>=2.2.0"]
+sqlite-gemini = ["google-genai>=1.68.0"]
+chroma-gemini = ["chromadb>=1.5.5", "google-genai>=1.68.0"]
 all-db = [
   "psycopg2-binary>=2.9.0",
   "pymysql>=1.1.0",
   "pyodbc>=5.1.0"
 ]
 
+[project.urls]
+Homepage = "https://pypi.org/project/naturalsql/"
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = true
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["naturalsql*"]
+exclude = ["tests*", "docs*", "build*", "dist*", "venv*", "assets*", "examples*"]
 
 [tool.setuptools.package-data]
 naturalsql = ["py.typed"]

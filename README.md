@@ -19,13 +19,25 @@ Necesito interactuar con mi base de datos usando un LLM, pero muchas librerias c
 
 ## Solucion
 
-NaturalSQL extrae el esquema de tu base de datos, lo vectoriza con ChromaDB + SentenceTransformer (`all-MiniLM-L6-v2`), y usa busqueda por similitud semantica para proporcionar contexto relevante al LLM.
+NaturalSQL extrae el esquema de tu base de datos, lo vectoriza con backend configurable (`chroma` o `sqlite`) y embeddings configurables (`local` o `gemini`), y usa busqueda por similitud semantica para proporcionar contexto relevante al LLM.
 
 ## Instalacion
 
 ```bash
 # Instalacion base
 pip install naturalsql
+
+# Chroma + embeddings locales
+pip install "naturalsql[chroma-local]"
+
+# SQLite + embeddings locales
+pip install "naturalsql[sqlite-local]"
+
+# SQLite + Gemini embeddings
+pip install "naturalsql[sqlite-gemini]"
+
+# Chroma + Gemini embeddings
+pip install "naturalsql[chroma-gemini]"
 
 # Con soporte para PostgreSQL
 pip install naturalsql[postgresql]
@@ -41,6 +53,8 @@ pip install naturalsql[all-db]
 ```
 
 > SQLite esta incluido en la libreria estandar de Python, no requiere dependencias adicionales.
+> Para Gemini, el SDK actual es `google-genai` (import: `google.genai`).
+> Usa variables de entorno para llaves API (ej. `GEMINI_API_KEY`), no hardcodees secretos en codigo.
 
 ## Motores SQL soportados
 
@@ -88,34 +102,45 @@ tables = nsql.search("clientes registrados hoy")
 tables = nsql.search("productos con bajo inventario")
 ```
 
-### Ejemplo completo con un LLM (Groq)
+### Ejemplos E2E
 
 ```python
 from naturalsql import NaturalSQL
-from naturalsql.utils.prompt import build_prompt
-from groq import Groq
 
-GROQ_API_KEY = "tu_api_key"
-
+# A) Chroma + local (ajuste practico para Chroma 1.5.x)
 nsql = NaturalSQL(
     db_url="postgresql://user:pass@localhost:5432/mydb",
     db_type="postgresql",
+    vector_backend="chroma",
+    embedding_provider="local",
+    vector_distance_threshold=1.6,  # Si `search()` retorna [], prueba 1.4-1.6
 )
 
-nsql.build_vector_db(forced_reset=True)
-
-question = "What is the first user to register?"
-tables = nsql.search(question)
-
-prompt = build_prompt(tables, question)
-
-client = Groq(api_key=GROQ_API_KEY)
-response = client.chat.completions.create(
-    model="llama-3.3-70b-versatile",
-    messages=[{"role": "user", "content": prompt}],
-)
-print(response.choices[0].message.content)
+nsql.build_vector_db(storage_path="./metadata_vdb", forced_reset=False)
+tables = nsql.search("ventas del ultimo mes", limit=3)
+print(tables)
 ```
+
+```python
+import os
+from naturalsql import NaturalSQL
+
+# B) SQLite + Gemini (llave por variable de entorno)
+nsql = NaturalSQL(
+    db_url="sqlite:///./app.db",
+    db_type="sqlite",
+    vector_backend="sqlite",
+    embedding_provider="gemini",
+    gemini_api_key=os.environ["GEMINI_API_KEY"],
+    gemini_embedding_model="models/text-embedding-004",
+)
+
+nsql.build_vector_db(storage_path="./metadata_vdb_sqlite", forced_reset=False)
+tables = nsql.search("usuarios con compras recientes", limit=3)
+print(tables)
+```
+
+> Nota: Si usas Gemini, define `GEMINI_API_KEY` en tu entorno y evita exponerla en repositorios o logs.
 
 ## API
 
@@ -129,10 +154,15 @@ Crea una instancia con la configuracion de conexion y embeddings.
 | `db_type` | `str` | `""` | Motor: `postgresql`, `mysql`, `sqlite`, `sqlserver` |
 | `db_normalize_embeddings` | `bool` | `True` | Normalizar vectores de embeddings |
 | `device` | `str` | `"cpu"` | Dispositivo: `cpu` o `cuda` |
+| `vector_backend` | `Literal["chroma", "sqlite"]` | `"chroma"` | Backend vectorial |
+| `embedding_provider` | `Literal["local", "gemini"]` | `"local"` | Proveedor de embeddings |
+| `gemini_api_key` | `str \| None` | `None` | Requerido si `embedding_provider="gemini"` |
+| `gemini_embedding_model` | `str` | `"models/text-embedding-004"` | Modelo de embeddings Gemini |
+| `vector_distance_threshold` | `float` | `1.0` | Umbral maximo de distancia en `search()`. Con Chroma 1.5.x, si obtienes `[]`, prueba `1.4-1.6` (validado en e2e con `1.6`). |
 
 ### `nsql.build_vector_db(...) -> dict`
 
-Conecta a la BD, extrae el esquema y lo indexa en ChromaDB.
+Conecta a la BD, extrae el esquema y lo indexa en el backend vectorial configurado (`chroma` o `sqlite`).
 
 | Parametro | Tipo | Default | Descripcion |
 |---|---|---|---|
@@ -173,9 +203,9 @@ prompt = build_prompt(tables, "Quiero ver las ventas del ultimo mes")
 
 2. **Extraccion de esquema**: Consulta `information_schema.columns` (PostgreSQL, MySQL, SQL Server) o `PRAGMA table_info` (SQLite) para obtener tablas, columnas y tipos de datos.
 
-3. **Vectorizacion**: Cada tabla se convierte en un bloque semantico y se indexa con ChromaDB usando el modelo `all-MiniLM-L6-v2` de SentenceTransformer.
+3. **Vectorizacion**: Cada tabla se convierte en un bloque semantico y se indexa en el backend configurado (`chroma` o `sqlite`) usando embeddings locales (SentenceTransformer) o Gemini (`google-genai`).
 
-4. **Busqueda**: Ante una pregunta del usuario, se buscan las tablas mas relevantes por similitud semantica (distancia <= 0.8) y se retornan como contexto para el LLM.
+4. **Busqueda**: Ante una pregunta del usuario, se buscan las tablas mas relevantes por similitud semantica y se filtran por `vector_distance_threshold` (default `1.0`; en Chroma 1.5.x puede requerir `1.4-1.6`).
 
 5. **Cache**: El modelo de embeddings se carga una sola vez por instancia de `NaturalSQL`. Las busquedas posteriores reutilizan la instancia en memoria (~10-15ms vs ~2-5s).
 

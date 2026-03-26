@@ -1,7 +1,11 @@
-from naturalsql.controller.controllervector import VectorManager
+from typing import TYPE_CHECKING, Literal
+
 from naturalsql.sql.sqlconecctions import Connection
 from naturalsql.sql.sqlschema import SQLSchemaExtractor
 from naturalsql.utils.config import AppConfig
+
+if TYPE_CHECKING:
+    from naturalsql.controller.controllervector import VectorManager
 
 
 class NaturalSQL:
@@ -23,6 +27,30 @@ class NaturalSQL:
         tables = nsql.search("customers who made purchases")
     """
 
+    COMBINATION_REQUIREMENTS = {
+        ("chroma", "local"): {
+            "extra": "chroma-local",
+            "imports": ("chromadb", "sentence_transformers"),
+            "missing": ("chromadb", "sentence-transformers"),
+        },
+        ("sqlite", "local"): {
+            "extra": "sqlite-local",
+            "imports": ("sentence_transformers",),
+            "missing": ("sentence-transformers",),
+        },
+        ("sqlite", "gemini"): {
+            "extra": "sqlite-gemini",
+            "imports": ("google.genai",),
+            "missing": ("google-genai",),
+        },
+        ("chroma", "gemini"): {
+            "extra": "chroma-gemini",
+            "imports": ("chromadb", "google.genai"),
+            "missing": ("chromadb", "google-genai"),
+        },
+    }
+    SUPPORTED_COMBINATIONS = frozenset(COMBINATION_REQUIREMENTS)
+
     def __init__(
         self,
         *,
@@ -30,34 +58,96 @@ class NaturalSQL:
         db_type: str = "",
         db_normalize_embeddings: bool = True,
         device: str = "cpu",
+        vector_backend: Literal["chroma", "sqlite"] = "chroma",
+        embedding_provider: Literal["local", "gemini"] = "local",
+        gemini_api_key: str | None = None,
+        gemini_embedding_model: str = "models/text-embedding-004",
+        vector_distance_threshold: float = 1.0,
     ) -> None:
         """Crea una instancia de NaturalSQL con la configuracion proporcionada.
 
         Args:
-            db_url: URL de conexion a la base de datos
-                    (e.g. postgresql://user:pass@host:port/db).
-            db_type: Tipo de motor de base de datos
-                     (postgresql, mysql, sqlite, sqlserver).
-            api_key_llm: API key para el modelo LLM (opcional, no usado
-                         internamente por la libreria).
+            db_url: URL de conexion a la base de datos (e.g. postgresql://...).
+            db_type: Tipo de motor de base de datos (postgresql, mysql, sqlite, sqlserver).
             db_normalize_embeddings: Si se normalizan los embeddings vectoriales.
             device: Dispositivo para el modelo de embeddings (cpu o cuda).
+            vector_backend: Backend para vectores ("chroma" o "sqlite").
+            embedding_provider: Proveedor de embeddings ("local" o "gemini").
+            gemini_api_key: API key para Google Gemini (requerido si provider="gemini").
+            gemini_embedding_model: Modelo de embeddings de Gemini a usar.
+            vector_distance_threshold: Umbral maximo de distancia para filtrar
+                tablas relevantes en la busqueda vectorial.
         """
+        # 1. Normalize inputs
+        vector_backend = vector_backend.strip().lower()
+        embedding_provider = embedding_provider.strip().lower()
+
+        # 2. Validate supported combinations
+        if (vector_backend, embedding_provider) not in self.SUPPORTED_COMBINATIONS:
+            raise ValueError(
+                f"Combinacion no soportada: ({vector_backend}, {embedding_provider}). "
+                f"Soportadas: {self.SUPPORTED_COMBINATIONS}"
+            )
+
+        # 3. Validate API key availability
+        if embedding_provider == "gemini" and not gemini_api_key:
+            raise ValueError("gemini_api_key es requerido cuando embedding_provider='gemini'")
+        if embedding_provider != "gemini" and gemini_api_key:
+            raise ValueError("gemini_api_key solo debe enviarse cuando embedding_provider='gemini'")
+
+        # 4. Validate retrieval threshold
+        if not isinstance(vector_distance_threshold, (int, float)):
+            raise ValueError("vector_distance_threshold debe ser numerico (int o float).")
+        if vector_distance_threshold <= 0:
+            raise ValueError("vector_distance_threshold debe ser mayor que 0.")
+
+        # 5. Validate dependencies for the selected combination
+        self._validate_dependencies(vector_backend, embedding_provider)
+
         self.config = AppConfig(
             db_url=db_url,
             db_type=(db_type or "").strip().lower(),
             db_normalize_embeddings=bool(db_normalize_embeddings),
             device=(device or "cpu").strip().lower(),
+            vector_backend=vector_backend,
+            embedding_provider=embedding_provider,
+            gemini_api_key=gemini_api_key,
+            gemini_embedding_model=gemini_embedding_model,
+            vector_distance_threshold=float(vector_distance_threshold),
         )
 
         # Cached VectorManager instance — avoids reloading SentenceTransformer
         # on every search call.  Keyed by (storage_path,).
-        self._vector_manager: VectorManager | None = None
+        self._vector_manager: "VectorManager | None" = None
         self._vm_storage_path: str | None = None
 
-    # ── Private helpers ───────────────────────────────────────────
+    def _validate_dependencies(
+        self,
+        backend: Literal["chroma", "sqlite"],
+        provider: Literal["local", "gemini"],
+    ) -> None:
+        """Check if required packages are installed for the selected config."""
+        combo = (backend, provider)
+        requirements = self.COMBINATION_REQUIREMENTS[combo]
 
-    def _get_vector_manager(self, storage_path: str) -> VectorManager:
+        missing: list[str] = []
+        for module_name, package_name in zip(
+            requirements["imports"], requirements["missing"],
+        ):
+            try:
+                __import__(module_name)
+            except ImportError:
+                missing.append(package_name)
+
+        if missing:
+            extra_name = requirements["extra"]
+            raise ImportError(
+                f"Missing dependencies for ({backend}, {provider}): {', '.join(missing)}. "
+                f"Install with: pip install \"naturalsql[{extra_name}]\""
+            )
+
+
+    def _get_vector_manager(self, storage_path: str) -> "VectorManager":
         """Return cached VectorManager, creating one if needed."""
         if (
             self._vector_manager is not None
@@ -65,6 +155,7 @@ class NaturalSQL:
         ):
             return self._vector_manager
 
+        from naturalsql.controller.controllervector import VectorManager
         self._vector_manager = VectorManager(
             storage_path=storage_path,
             force_reset=False,
@@ -77,8 +168,6 @@ class NaturalSQL:
         """Clear the cached VectorManager so the next call creates a fresh one."""
         self._vector_manager = None
         self._vm_storage_path = None
-
-    # ── Public API ────────────────────────────────────────────────
 
     def build_vector_db(
         self,
@@ -116,6 +205,7 @@ class NaturalSQL:
         if forced_reset:
             self._invalidate_cache()
 
+        from naturalsql.controller.controllervector import VectorManager
         if not forced_reset:
             existing_count = VectorManager.collection_exists(storage_path)
             if existing_count > 0:
@@ -154,6 +244,7 @@ class NaturalSQL:
             }
         finally:
             conn.disconnect()
+
 
     def search(
         self,
