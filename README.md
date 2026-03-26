@@ -1,5 +1,7 @@
 # NaturalSQL
 
+Documentación en español: [README_SPANISH.md](README_SPANISH.md)
+
 <p align="center">
   <img src="assets/naturalsql_logo.png" alt="NaturalSQL Logo" width="600"/>
 </p>
@@ -11,26 +13,26 @@
   <a href="https://github.com/Zay-M3/NaturalSQL/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/naturalsql" alt="License"></a>
 </p>
 
-Libreria ligera para convertir el esquema de tu base de datos SQL en una base de datos vectorial, permitiendo que modelos LLM tengan contexto para generar consultas SQL precisas a partir de lenguaje natural.
+Lightweight library to convert your SQL database schema into a vector database, so LLMs can use real table/column context to generate more accurate SQL from natural language.
 
-## Problema
+## Problem
 
-Necesito interactuar con mi base de datos usando un LLM, pero muchas librerias contienen funcionalidades adicionales que las hacen pesadas para proyectos pequenos.
+I wanted to interact with SQL databases through an LLM without pulling in large frameworks with many unrelated features.
 
-## Solucion
+## Solution
 
-NaturalSQL extrae el esquema de tu base de datos, lo vectoriza con backend configurable (`chroma` o `sqlite`) y embeddings configurables (`local` o `gemini`), y usa busqueda por similitud semantica para proporcionar contexto relevante al LLM.
+NaturalSQL extracts your database schema, vectorizes it using a configurable backend (`chroma` or `sqlite`) and configurable embedding provider (`local` or `gemini`), then performs semantic retrieval to return relevant schema context for your LLM.
 
-## Instalacion
+## Installation
 
 ```bash
-# Instalacion base
+# Base installation
 pip install naturalsql
 
-# Chroma + embeddings locales
+# Chroma + local embeddings
 pip install "naturalsql[chroma-local]"
 
-# SQLite + embeddings locales
+# SQLite + local embeddings
 pip install "naturalsql[sqlite-local]"
 
 # SQLite + Gemini embeddings
@@ -39,85 +41,76 @@ pip install "naturalsql[sqlite-gemini]"
 # Chroma + Gemini embeddings
 pip install "naturalsql[chroma-gemini]"
 
-# Con soporte para PostgreSQL
+# PostgreSQL driver support
 pip install naturalsql[postgresql]
 
-# Con soporte para MySQL
+# MySQL driver support
 pip install naturalsql[mysql]
 
-# Con soporte para SQL Server
+# SQL Server driver support
 pip install naturalsql[sqlserver]
 
-# Con soporte para todos los motores
+# All DB drivers
 pip install naturalsql[all-db]
 ```
 
-> SQLite esta incluido en la libreria estandar de Python, no requiere dependencias adicionales.
-> Para Gemini, el SDK actual es `google-genai` (import: `google.genai`).
-> Usa variables de entorno para llaves API (ej. `GEMINI_API_KEY`), no hardcodees secretos en codigo.
+> SQLite is included in the Python standard library.
+> For Gemini, the current SDK is `google-genai` (import path: `google.genai`).
+> Use environment variables for API keys (e.g. `GEMINI_API_KEY`), never hardcode secrets.
 
-## Motores SQL soportados
+## Supported SQL engines
 
 - PostgreSQL
 - MySQL
 - SQL Server
 - SQLite
 
-## Uso rapido
+## Quick start
 
 ```python
 from naturalsql import NaturalSQL
 
-# 1. Crear instancia con la configuracion de conexion
+# 1) Create an instance
 nsql = NaturalSQL(
     db_url="postgresql://user:password@localhost:5432/mydb",
     db_type="postgresql",
 )
 
-# 2. Construir la base vectorial a partir del esquema de la BD
+# 2) Build vector DB from schema
 result = nsql.build_vector_db()
-print(f"Tablas indexadas: {result['indexed_documents']}")
-print(f"Desde cache: {result['from_cache']}")
+print(f"Indexed tables: {result['indexed_documents']}")
+print(f"From cache: {result['from_cache']}")
 
-# 3. Buscar tablas relevantes para una pregunta
-tables = nsql.search("Quiero ver las ventas del ultimo mes")
+# 3) Retrieve relevant tables for a question
+tables = nsql.search("Show me sales from last month")
 
-# 4. Usar las tablas como contexto para tu LLM preferido
+# 4) Use returned tables as LLM context
 for table in tables:
     print(table)
 ```
 
-### Cache automatico
+### Automatic cache
 
-La primera llamada a `search()` carga el modelo de embeddings (~2-5 segundos). Las llamadas posteriores reutilizan la instancia en memoria y responden en ~10-15ms.
+The first `search()` call loads the embedding model (~2-5s). Subsequent calls reuse the in-memory instance and typically run in ~10-15ms.
 
-De igual forma, `build_vector_db()` detecta si la base vectorial ya existe. Si `forced_reset=False` (por defecto), reutiliza la coleccion existente sin reconectarse a la BD ni regenerar embeddings.
+Similarly, `build_vector_db()` reuses existing vector storage when available (`forced_reset=False`) to avoid unnecessary reindexing.
 
-```python
-# Primera busqueda: ~2-5s (carga del modelo)
-tables = nsql.search("ventas del ultimo mes")
-
-# Busquedas posteriores: ~10-15ms (modelo en cache)
-tables = nsql.search("clientes registrados hoy")
-tables = nsql.search("productos con bajo inventario")
-```
-
-### Ejemplos E2E
+## E2E examples
 
 ```python
 from naturalsql import NaturalSQL
 
-# A) Chroma + local (ajuste practico para Chroma 1.5.x)
+# A) Chroma + local (practical tuning for Chroma 1.5.x)
 nsql = NaturalSQL(
     db_url="postgresql://user:pass@localhost:5432/mydb",
     db_type="postgresql",
     vector_backend="chroma",
     embedding_provider="local",
-    vector_distance_threshold=1.6,  # Si `search()` retorna [], prueba 1.4-1.6
+    vector_distance_threshold=1.6,  # If search() returns [], try 1.4-1.6
 )
 
 nsql.build_vector_db(storage_path="./metadata_vdb", forced_reset=False)
-tables = nsql.search("ventas del ultimo mes", limit=3)
+tables = nsql.search("sales for the last month", limit=3)
 print(tables)
 ```
 
@@ -125,7 +118,7 @@ print(tables)
 import os
 from naturalsql import NaturalSQL
 
-# B) SQLite + Gemini (llave por variable de entorno)
+# B) SQLite + Gemini
 nsql = NaturalSQL(
     db_url="sqlite:///./app.db",
     db_type="sqlite",
@@ -136,79 +129,73 @@ nsql = NaturalSQL(
 )
 
 nsql.build_vector_db(storage_path="./metadata_vdb_sqlite", forced_reset=False)
-tables = nsql.search("usuarios con compras recientes", limit=3)
+tables = nsql.search("users with recent purchases", limit=3)
 print(tables)
 ```
-
-> Nota: Si usas Gemini, define `GEMINI_API_KEY` en tu entorno y evita exponerla en repositorios o logs.
 
 ## API
 
 ### `NaturalSQL(**kwargs)`
 
-Crea una instancia con la configuracion de conexion y embeddings.
+Creates an instance with DB and embedding configuration.
 
-| Parametro | Tipo | Default | Descripcion |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `db_url` | `str \| None` | `None` | URL de conexion a la BD |
-| `db_type` | `str` | `""` | Motor: `postgresql`, `mysql`, `sqlite`, `sqlserver` |
-| `db_normalize_embeddings` | `bool` | `True` | Normalizar vectores de embeddings |
-| `device` | `str` | `"cpu"` | Dispositivo: `cpu` o `cuda` |
-| `vector_backend` | `Literal["chroma", "sqlite"]` | `"chroma"` | Backend vectorial |
-| `embedding_provider` | `Literal["local", "gemini"]` | `"local"` | Proveedor de embeddings |
-| `gemini_api_key` | `str \| None` | `None` | Requerido si `embedding_provider="gemini"` |
-| `gemini_embedding_model` | `str` | `"models/text-embedding-004"` | Modelo de embeddings Gemini |
-| `vector_distance_threshold` | `float` | `1.0` | Umbral maximo de distancia en `search()`. Con Chroma 1.5.x, si obtienes `[]`, prueba `1.4-1.6` (validado en e2e con `1.6`). |
+| `db_url` | `str \| None` | `None` | Database connection URL |
+| `db_type` | `str` | `""` | Engine: `postgresql`, `mysql`, `sqlite`, `sqlserver` |
+| `db_normalize_embeddings` | `bool` | `True` | Normalize embedding vectors |
+| `device` | `str` | `"cpu"` | Embedding device: `cpu` or `cuda` |
+| `vector_backend` | `Literal["chroma", "sqlite"]` | `"chroma"` | Vector backend |
+| `embedding_provider` | `Literal["local", "gemini"]` | `"local"` | Embedding provider |
+| `gemini_api_key` | `str \| None` | `None` | Required when `embedding_provider="gemini"` |
+| `gemini_embedding_model` | `str` | `"models/text-embedding-004"` | Gemini embedding model |
+| `vector_distance_threshold` | `float` | `1.0` | Max distance threshold used by `search()` filtering. For Chroma 1.5.x, if you get `[]`, try `1.4-1.6` (validated with `1.6`). |
 
 ### `nsql.build_vector_db(...) -> dict`
 
-Conecta a la BD, extrae el esquema y lo indexa en el backend vectorial configurado (`chroma` o `sqlite`).
+Connects to the DB, extracts schema, and indexes it in the configured vector backend (`chroma` or `sqlite`).
 
-| Parametro | Tipo | Default | Descripcion |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `storage_path` | `str` | `"./metadata_vdb"` | Ruta de almacenamiento vectorial |
-| `forced_reset` | `bool` | `False` | Eliminar coleccion existente antes de reindexar |
+| `storage_path` | `str` | `"./metadata_vdb"` | Vector storage path |
+| `forced_reset` | `bool` | `False` | Rebuild vector collection from scratch |
 
-Retorna un `dict` con:
+Returns:
 
-| Clave | Tipo | Descripcion |
+| Key | Type | Description |
 |---|---|---|
-| `storage_path` | `str` | Ruta utilizada |
-| `indexed_documents` | `int` | Cantidad de tablas indexadas |
-| `from_cache` | `bool` | `True` si reutilizo coleccion existente |
+| `storage_path` | `str` | Storage path used |
+| `indexed_documents` | `int` | Number of indexed tables |
+| `from_cache` | `bool` | `True` if existing vector store was reused |
 
 ### `nsql.search(...) -> list`
 
-Busca tablas semanticamente relevantes para una consulta en lenguaje natural.
+Retrieves semantically relevant tables for a natural-language question.
 
-| Parametro | Tipo | Default | Descripcion |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `request` | `str` | requerido | Pregunta en lenguaje natural |
-| `storage_path` | `str` | `"./metadata_vdb"` | Ruta de la base vectorial |
-| `limit` | `int` | `3` | Maximo de tablas a retornar |
+| `request` | `str` | required | Natural-language question |
+| `storage_path` | `str` | `"./metadata_vdb"` | Vector storage path |
+| `limit` | `int` | `3` | Maximum number of tables to return |
 
 ### `build_prompt(relevant_tables, user_question) -> str`
 
-Funcion auxiliar en `naturalsql.utils.prompt` que genera un prompt listo para enviar al LLM, combinando las tablas relevantes con la pregunta del usuario.
+Helper function in `naturalsql.utils.prompt` to create an LLM prompt using relevant tables + user question.
 
 ```python
 from naturalsql.utils.prompt import build_prompt
 
-prompt = build_prompt(tables, "Quiero ver las ventas del ultimo mes")
+prompt = build_prompt(tables, "Show me sales from last month")
 ```
 
-## Estrategia tecnica
+## Technical strategy
 
-1. **Conexion**: Se conecta a la BD usando la URL proporcionada con drivers nativos (psycopg2, pymysql, sqlite3, pyodbc).
+1. **Connection**: connects using native drivers (`psycopg2`, `pymysql`, `sqlite3`, `pyodbc`).
+2. **Schema extraction**: uses `information_schema.columns` (PostgreSQL/MySQL/SQL Server) or `PRAGMA table_info` (SQLite).
+3. **Vectorization**: each table schema is transformed into a semantic document and indexed in configured backend (`chroma` or `sqlite`) with local or Gemini embeddings.
+4. **Retrieval**: semantic nearest-neighbor search + `vector_distance_threshold` filtering.
+5. **Caching**: embedding model and vector manager are reused per instance to reduce repeated latency.
 
-2. **Extraccion de esquema**: Consulta `information_schema.columns` (PostgreSQL, MySQL, SQL Server) o `PRAGMA table_info` (SQLite) para obtener tablas, columnas y tipos de datos.
-
-3. **Vectorizacion**: Cada tabla se convierte en un bloque semantico y se indexa en el backend configurado (`chroma` o `sqlite`) usando embeddings locales (SentenceTransformer) o Gemini (`google-genai`).
-
-4. **Busqueda**: Ante una pregunta del usuario, se buscan las tablas mas relevantes por similitud semantica y se filtran por `vector_distance_threshold` (default `1.0`; en Chroma 1.5.x puede requerir `1.4-1.6`).
-
-5. **Cache**: El modelo de embeddings se carga una sola vez por instancia de `NaturalSQL`. Las busquedas posteriores reutilizan la instancia en memoria (~10-15ms vs ~2-5s).
-
-## Licencia
+## License
 
 [Apache License 2.0](LICENSE)
