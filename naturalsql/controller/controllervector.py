@@ -1,57 +1,56 @@
 import os
-
-import chromadb
-from chromadb.utils import embedding_functions
 from naturalsql.utils.config import AppConfig
-
+from naturalsql.vector.factory import create_embedding_provider, create_vector_store
 
 class VectorManager:
 
     @staticmethod
     def collection_exists(storage_path: str) -> int:
-        """Verifica si ya existe una coleccion indexada sin cargar el modelo de embeddings.
-
-        Solo abre el PersistentClient de ChromaDB y cuenta los documentos existentes.
-        No inicializa SentenceTransformer.
-
-        Args:
-            storage_path: Ruta donde se almacena la base vectorial.
-
-        Returns:
-            int: Cantidad de documentos indexados, 0 si no existe la coleccion.
-        """
-        if not os.path.isdir(storage_path):
-            return 0
+        """Check if an indexed collection exists (Chroma or SQLite)."""
+        # Check Chroma
         try:
-            client = chromadb.PersistentClient(path=storage_path)
-            collection = client.get_collection("db_schema")
-            return collection.count()
+            import chromadb
+            if os.path.isdir(storage_path):
+                # Only check if chroma specific files exist to avoid creating empty db
+                if os.path.exists(os.path.join(storage_path, "chroma.sqlite3")):
+                    client = chromadb.PersistentClient(path=storage_path)
+                    try:
+                        collection = client.get_collection("db_schema")
+                        count = collection.count()
+                        if count > 0: return count
+                    except:
+                        pass
         except Exception:
-            return 0
+            pass
+            
+        # Check SQLite
+        try:
+            import sqlite3
+            db_path = os.path.join(storage_path, "vectors.db")
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("SELECT COUNT(*) FROM vectors")
+                    count = cursor.fetchone()[0]
+                    if count > 0: return count
+                except:
+                    pass
+                finally:
+                    conn.close()
+        except Exception:
+            pass
+            
+        return 0
         
     def __init__(self, storage_path="./metadata_vdb", force_reset=False, config: AppConfig | None = None):
         if config is None:
             raise ValueError("VectorManager requiere una instancia de AppConfig en config.")
         self.config = config
-        self.client = chromadb.PersistentClient(path=storage_path)
-
-        if force_reset:
-            try:
-                self.client.delete_collection("db_schema")
-            except ValueError:
-                pass
-            except Exception:
-                pass
-
-        self.ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2",
-            normalize_embeddings=self.config.db_normalize_embeddings,
-            device=self.config.device,
-        )
-        self.collection = self.client.get_or_create_collection(
-            name="db_schema",
-            embedding_function=self.ef,
-        )
+        
+        # Initialize provider and store via factory
+        self.provider = create_embedding_provider(config)
+        self.store = create_vector_store(config, storage_path, reset=force_reset)
 
     def index_tables(self, tables_list):
         """Indexa la lista de tablas en la base de datos vectorial.
@@ -59,10 +58,12 @@ class VectorManager:
         Args:
             tables_list: Lista de strings con las descripciones de tablas formateadas.
         """
-        self.collection.upsert(
-            documents=tables_list,
-            ids=[f"table::{table_name}" for table_name in tables_list],
-        )
+        if not tables_list:
+            return
+
+        ids = [f"table::{table_name}" for table_name in tables_list]
+        embeddings = self.provider.embed_documents(tables_list)
+        self.store.upsert(documents=tables_list, ids=ids, embeddings=embeddings)
 
     def search_relevant_tables(self, request, limit=3):
         """Busca las tablas relevantes para una solicitud dada, utilizando el indice vectorial.
@@ -72,14 +73,17 @@ class VectorManager:
             limit: Numero maximo de resultados a retornar.
 
         Returns:
-            list: Lista de descripciones de tablas relevantes (filtradas por distancia <= 0.8).
+            list: Lista de descripciones de tablas relevantes (filtradas por distancia <= threshold configurado).
         """
-        query = f"{request}. tablas sql relacionadas"
-        results = self.collection.query(query_texts=[query], n_results=limit)
+        query = request
+        query_embedding = self.provider.embed_query(query)
+        
+        documents, distances = self.store.query(query_embedding, limit)
 
         final_tables = []
-        for doc, dist in zip(results["documents"][0], results["distances"][0]):
-            if dist <= 0.8:
+        threshold = self.config.vector_distance_threshold
+        for doc, dist in zip(documents, distances):
+            if dist <= threshold:
                 final_tables.append(doc)
 
         return final_tables
