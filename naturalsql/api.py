@@ -222,15 +222,15 @@ class NaturalSQL:
             extractor = SQLSchemaExtractor(
                 conn.connection, db_type=self.config.db_type,
             )
-            schema = extractor.extract_schema()
-            formatted = extractor.formated_for_ia(schema)
+            schema_bundle = extractor.extract_schema()
+            documents_payload = extractor.formated_for_ia(schema_bundle)
 
             vm = VectorManager(
                 storage_path=storage_path,
                 force_reset=forced_reset,
                 config=self.config,
             )
-            vm.index_tables(formatted)
+            vm.index_documents(documents_payload)
 
             # After a forced rebuild, store the new VectorManager in cache
             # so the next search call reuses it immediately.
@@ -239,7 +239,7 @@ class NaturalSQL:
 
             return {
                 "storage_path": storage_path,
-                "indexed_documents": len(formatted),
+                "indexed_documents": len(documents_payload),
                 "from_cache": False,
             }
         finally:

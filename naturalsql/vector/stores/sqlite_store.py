@@ -2,7 +2,7 @@ import sqlite3
 import json
 import os
 import math
-from typing import List, Tuple
+from typing import Any, List, Tuple
 from naturalsql.vector.stores.base import VectorStore
 
 class SQLiteVectorStore(VectorStore):
@@ -16,6 +16,7 @@ class SQLiteVectorStore(VectorStore):
         db_path = os.path.join(storage_path, "vectors.db")
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
+        self.cursor.execute("PRAGMA foreign_keys = ON")
         self.table_name = table_name
 
         if reset_on_start:
@@ -26,24 +27,47 @@ class SQLiteVectorStore(VectorStore):
             CREATE TABLE IF NOT EXISTS {table_name} (
                 id TEXT PRIMARY KEY,
                 content TEXT,
-                embedding TEXT
+                embedding TEXT,
+                metadata_json TEXT
             )
         """)
+
+        # Backward compatibility for existing tables created before metadata_json.
+        self.cursor.execute(f"PRAGMA table_info({table_name})")
+        existing_columns = {row[1] for row in self.cursor.fetchall()}
+        if "metadata_json" not in existing_columns:
+            self.cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN metadata_json TEXT")
+
         self.conn.commit()
 
-    def upsert(self, documents: List[str], ids: List[str], embeddings: List[List[float]]):
-        """Add or update documents."""
-        for doc, id, emb in zip(documents, ids, embeddings):
+    def upsert(
+        self,
+        documents: List[str],
+        ids: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[dict[str, Any]] | None = None,
+    ):
+        """Add or update documents with optional metadata_json."""
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        for doc, id, emb, metadata in zip(documents, ids, embeddings, metadatas):
             emb_json = json.dumps(emb)
+            metadata_json = json.dumps(metadata or {})
             self.cursor.execute(f"""
-                INSERT OR REPLACE INTO {self.table_name} (id, content, embedding)
-                VALUES (?, ?, ?)
-            """, (id, doc, emb_json))
+                INSERT OR REPLACE INTO {self.table_name} (id, content, embedding, metadata_json)
+                VALUES (?, ?, ?, ?)
+            """, (id, doc, emb_json, metadata_json))
         self.conn.commit()
 
-    def query(self, query_embedding: List[float], n_results: int) -> Tuple[List[str], List[float]]:
-        """Query using cosine distance (1 - similarity)."""
-        self.cursor.execute(f"SELECT content, embedding FROM {self.table_name}")
+    def query(
+        self,
+        query_embedding: List[float],
+        n_results: int,
+        kind: str | None = None,
+    ) -> Tuple[List[str], List[float]]:
+        """Query using cosine distance (1 - similarity) with optional kind filter."""
+        self.cursor.execute(f"SELECT content, embedding, metadata_json FROM {self.table_name}")
         rows = self.cursor.fetchall()
         
         if not rows:
@@ -62,7 +86,12 @@ class SQLiteVectorStore(VectorStore):
             query_vec = np.array(query_embedding)
             norm_query = np.linalg.norm(query_vec)
             
-            for content, emb_json in rows:
+            for content, emb_json, metadata_json in rows:
+                if kind:
+                    metadata = json.loads(metadata_json) if metadata_json else {}
+                    if metadata.get("kind") != kind:
+                        continue
+
                 vec = np.array(json.loads(emb_json))
                 norm_vec = np.linalg.norm(vec)
                 
@@ -81,7 +110,12 @@ class SQLiteVectorStore(VectorStore):
                 return math.sqrt(sum(x*x for x in v))
             
             norm_query = norm(query_embedding)
-            for content, emb_json in rows:
+            for content, emb_json, metadata_json in rows:
+                if kind:
+                    metadata = json.loads(metadata_json) if metadata_json else {}
+                    if metadata.get("kind") != kind:
+                        continue
+
                 vec = json.loads(emb_json)
                 norm_vec = norm(vec)
                 

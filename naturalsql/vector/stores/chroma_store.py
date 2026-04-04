@@ -1,5 +1,5 @@
 import chromadb
-from typing import List, Tuple
+from typing import Any, List, Tuple
 from naturalsql.vector.stores.base import VectorStore
 
 class ChromaVectorStore(VectorStore):
@@ -17,21 +17,39 @@ class ChromaVectorStore(VectorStore):
             embedding_function=None  # We provide embeddings manually
         )
         
-    def upsert(self, documents: List[str], ids: List[str], embeddings: List[List[float]]):
-        """Add or update documents with their IDs and embeddings."""
-        self.collection.upsert(
-            documents=documents,
-            ids=ids,
-            embeddings=embeddings
-        )
+    def upsert(
+        self,
+        documents: List[str],
+        ids: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[dict[str, Any]] | None = None,
+    ):
+        """Add or update documents with IDs, embeddings, and optional metadata."""
+        payload = {
+            "documents": documents,
+            "ids": ids,
+            "embeddings": embeddings,
+        }
+        if metadatas is not None:
+            payload["metadatas"] = metadatas
 
-    def query(self, query_embedding: List[float], n_results: int) -> Tuple[List[str], List[float]]:
-        """Query the vector store using an embedding."""
-        results = self.collection.query(
-            #query_texts=[query],  # this is the last version of naturalsql
-            query_embeddings=[query_embedding],
-            n_results=n_results
-        )
+        self.collection.upsert(**payload)
+
+    def query(
+        self,
+        query_embedding: List[float],
+        n_results: int,
+        kind: str | None = None,
+    ) -> Tuple[List[str], List[float]]:
+        """Query the vector store using an embedding and optional kind filter."""
+        kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": n_results,
+        }
+        if kind:
+            kwargs["where"] = {"kind": kind}
+
+        results = self.collection.query(**kwargs)
         # Return first result batch as we query one vector at a time
         return results['documents'][0], results['distances'][0]
 
