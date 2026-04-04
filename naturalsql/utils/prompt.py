@@ -1,4 +1,6 @@
-def build_prompt(relevant_tables, user_question, db_type):
+from typing import Dict
+
+def build_prompt(relevant_tables : list, user_question : str, db_type : str) -> str:
     """
     The function `build_prompt` generates a formatted prompt for an SQL assistant based on relevant
     tables, a user question, and the type of database.
@@ -38,4 +40,39 @@ def build_prompt(relevant_tables, user_question, db_type):
     Raw SQL only.
     """
     
+    return prompt
+
+def prompt_query(question : str, query_response : Dict[list, list]) -> str:
+    
+    columns = query_response["columns"]
+    rows = query_response["rows"]
+
+    data_sample = [dict(zip(columns, row)) for row in rows[:10]]
+    
+    prompt = f"""
+    You are a business-focused data analyst.
+
+    Context:
+    - User question: "{question}"
+    - SQL result (sample):
+    {data_sample}
+
+    Goal:
+    Deliver a clear, direct, and actionable response for business decision-making.
+
+    Mandatory rules:
+    1. Do not use emojis.
+    2. Do not add observations, side notes, or warnings outside the main answer.
+    3. If data exists:
+        - First, provide a concise summary of the key insights derived from the data (3-4 sentences max).
+        - Second, present a Markdown table with relevant columns.
+        - Then provide 2 to 4 concrete business insights based only on the data only if applicable.
+        - Close with one actionable recommendation in a single sentence if is needed of other mode not.
+    4. If no data exists:
+        - State in one sentence that no results were found.
+        - Suggest one action to refine the query (filter, date range, or segment).
+    5. Keep a professional, concise, and no-fluff tone.
+    6. Do not invent data or assumptions not present in the SQL result.
+    7. Respond in the same language used by the user.
+    """
     return prompt
