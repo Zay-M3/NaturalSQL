@@ -1,4 +1,6 @@
 import os
+from typing import Any
+
 from naturalsql.utils.config import AppConfig
 from naturalsql.vector.factory import create_embedding_provider, create_vector_store
 
@@ -52,18 +54,41 @@ class VectorManager:
         self.provider = create_embedding_provider(config)
         self.store = create_vector_store(config, storage_path, reset=force_reset)
 
-    def index_tables(self, tables_list):
-        """Indexa la lista de tablas en la base de datos vectorial.
+    def index_documents(self, documents_payload: list[dict[str, Any]]):
+        """Indexa documentos estructurados (tablas y relaciones) en la base vectorial.
 
         Args:
-            tables_list: Lista de strings con las descripciones de tablas formateadas.
+            documents_payload: Lista de documentos con llaves:
+                - id: Identificador unico del documento.
+                - content: Texto para embedding.
+                - metadata: Metadatos del documento (incluye kind).
         """
-        if not tables_list:
+        if not documents_payload:
             return
 
-        ids = [f"table::{table_name}" for table_name in tables_list]
-        embeddings = self.provider.embed_documents(tables_list)
-        self.store.upsert(documents=tables_list, ids=ids, embeddings=embeddings)
+        documents = [item["content"] for item in documents_payload]
+        ids = [item["id"] for item in documents_payload]
+        metadatas = [item.get("metadata", {}) for item in documents_payload]
+
+        embeddings = self.provider.embed_documents(documents)
+        self.store.upsert(
+            documents=documents,
+            ids=ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )
+
+    def index_tables(self, tables_list):
+        """Wrapper de compatibilidad para indexacion antigua de solo tablas."""
+        payload = [
+            {
+                "id": f"table::{idx}",
+                "content": table_text,
+                "metadata": {"kind": "table"},
+            }
+            for idx, table_text in enumerate(tables_list)
+        ]
+        self.index_documents(payload)
 
     def search_relevant_tables(self, request, limit=3):
         """Busca las tablas relevantes para una solicitud dada, utilizando el indice vectorial.
@@ -78,12 +103,18 @@ class VectorManager:
         query = request
         query_embedding = self.provider.embed_query(query)
         
-        documents, distances = self.store.query(query_embedding, limit)
+        table_docs, table_distances = self.store.query(query_embedding, limit, kind="table")
+        rel_docs, rel_distances = self.store.query(query_embedding, max(1, limit), kind="relationship")
+
+        merged = list(zip(table_docs, table_distances)) + list(zip(rel_docs, rel_distances))
+        merged.sort(key=lambda item: item[1])
 
         final_tables = []
         threshold = self.config.vector_distance_threshold
-        for doc, dist in zip(documents, distances):
+        for doc, dist in merged:
             if dist <= threshold:
                 final_tables.append(doc)
+                if len(final_tables) >= limit:
+                    break
 
         return final_tables
