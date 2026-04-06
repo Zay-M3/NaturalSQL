@@ -125,7 +125,7 @@ nsql = NaturalSQL(
     vector_backend="sqlite",
     embedding_provider="gemini",
     gemini_api_key=os.environ["GEMINI_API_KEY"],
-    gemini_embedding_model="models/text-embedding-004",
+    gemini_embedding_model="gemini-embedding-2-preview",
 )
 
 nsql.build_vector_db(storage_path="./metadata_vdb_sqlite", forced_reset=False)
@@ -148,7 +148,7 @@ Creates an instance with DB and embedding configuration.
 | `vector_backend` | `Literal["chroma", "sqlite"]` | `"chroma"` | Vector backend |
 | `embedding_provider` | `Literal["local", "gemini"]` | `"local"` | Embedding provider |
 | `gemini_api_key` | `str \| None` | `None` | Required when `embedding_provider="gemini"` |
-| `gemini_embedding_model` | `str` | `"models/text-embedding-004"` | Gemini embedding model |
+| `gemini_embedding_model` | `str` | `"gemini-embedding-2-preview"` | Gemini embedding model |
 | `vector_distance_threshold` | `float` | `1.0` | Max distance threshold used by `search()` filtering. For Chroma 1.5.x, if you get `[]`, try `1.4-1.6` (validated with `1.6`). |
 
 ### `nsql.build_vector_db(...) -> dict`
@@ -188,13 +188,172 @@ from naturalsql.utils.prompt import build_prompt
 prompt = build_prompt(tables, "Show me sales from last month")
 ```
 
-## Technical strategy
+## How It Works Internally 
 
-1. **Connection**: connects using native drivers (`psycopg2`, `pymysql`, `sqlite3`, `pyodbc`).
-2. **Schema extraction**: uses `information_schema.columns` (PostgreSQL/MySQL/SQL Server) or `PRAGMA table_info` (SQLite).
-3. **Vectorization**: each table schema is transformed into a semantic document and indexed in configured backend (`chroma` or `sqlite`) with local or Gemini embeddings.
-4. **Retrieval**: semantic nearest-neighbor search + `vector_distance_threshold` filtering.
-5. **Caching**: embedding model and vector manager are reused per instance to reduce repeated latency.
+Think of NaturalSQL as a 5-step pipeline:
+
+1. Read DB structure with simple SQL/system queries.
+2. Normalize that structure into one common Python dictionary.
+3. Convert dictionary entries into semantic text documents.
+4. Turn those texts into embedding vectors.
+5. Store vectors in Chroma or SQLite and retrieve best matches for RAG.
+
+### 1) Schema extraction strategy by DB engine
+
+NaturalSQL does not parse SQL files. It asks the live database for metadata.
+
+- PostgreSQL: `information_schema.columns` for columns + joins over `information_schema.table_constraints`, `key_column_usage`, `constraint_column_usage` for foreign keys.
+- MySQL: `information_schema.columns` and `information_schema.key_column_usage` (scoped by `DATABASE()`).
+- SQL Server: `INFORMATION_SCHEMA.COLUMNS` for columns + `sys.foreign_key_columns` with `sys.tables`, `sys.schemas`, `sys.columns` for FK relationships.
+- SQLite: `sqlite_master` (table list), `PRAGMA table_info('<table>')` for columns, `PRAGMA foreign_key_list('<table>')` for relationships.
+
+Essential idea: most engines use `information_schema`; SQLite uses `PRAGMA`.
+
+### 2) Unified schema dictionary (same format for all engines)
+
+After extraction, data is normalized to one shape:
+
+```python
+{
+  "tables": {
+    "public.users": {
+      "schema": "public",
+      "table": "users",
+      "columns": [("id", "integer"), ("email", "text")]
+    }
+  },
+  "relationships": [
+    {
+      "from_schema": "public",
+      "from_table": "orders",
+      "from_column": "user_id",
+      "to_schema": "public",
+      "to_table": "users",
+      "to_column": "id"
+    }
+  ]
+}
+```
+
+This is what makes the next steps backend-agnostic.
+
+### 3) Dictionary to semantic documents (for embedding)
+
+The extractor then generates documents for two kinds of knowledge:
+
+- `kind=table`: table + columns + data types
+- `kind=relationship`: FK direction between tables
+
+Example payload item:
+
+```python
+{
+  "id": "table::public.users",
+  "content": "Schema: public. Table name: users. It has the following columns: id (integer), email (text)",
+  "metadata": {
+    "kind": "table",
+    "schema": "public",
+    "table": "users"
+  }
+}
+```
+
+Relationship example:
+
+```python
+{
+  "id": "rel::public.orders.user_id->public.users.id",
+  "content": "Relationship: public.orders.user_id -> public.users.id",
+  "metadata": {
+    "kind": "relationship"
+  }
+}
+```
+
+### 4) Embedding generation
+
+NaturalSQL supports two embedding providers:
+
+- `local`: `sentence-transformers` (`all-MiniLM-L6-v2`)
+- `gemini`: `google-genai` (`gemini-embedding-2-preview` by default)
+
+The system embeds:
+
+- documents with retrieval-document mode
+- user query with retrieval-query mode
+
+This gives a vector for each schema document and one vector for each user question.
+
+### 5) Vector storage strategy (Chroma vs SQLite)
+
+#### Chroma backend
+
+- Uses `chromadb.PersistentClient(path=storage_path)`.
+- Stores `ids`, `documents`, `embeddings`, `metadatas` in collection `db_schema`.
+- Retrieval uses native vector query + metadata filter, for example `where={"kind": "table"}`.
+
+#### SQLite backend
+
+- Creates `vectors.db` under `storage_path`.
+- Table schema: `id`, `content`, `embedding` (JSON text), `metadata_json` (JSON text).
+- Retrieval loads rows and computes cosine distance in Python (NumPy if available, pure Python fallback if not).
+- Also filters by `kind` from `metadata_json`.
+
+### 6) Retrieval flow for RAG
+
+When you call `search("...", limit=N)`, the flow is:
+
+1. Embed query text.
+2. Query `kind=table` and `kind=relationship` separately.
+3. Merge both result sets.
+4. Sort by distance (smaller is better).
+5. Apply `vector_distance_threshold`.
+6. Return top `N` schema contexts for your prompt.
+
+So the LLM receives real schema context instead of guessing table/column names.
+
+### 7) Minimal end-to-end internal view
+
+```python
+from naturalsql.sql.sqlschema import SQLSchemaExtractor
+from naturalsql.controller.controllervector import VectorManager
+
+# 1) extract
+extractor = SQLSchemaExtractor(connection, db_type="postgresql")
+schema_bundle = extractor.extract_schema()
+
+# 2) normalize -> semantic docs
+documents_payload = extractor.formated_for_ia(schema_bundle)
+
+# 3) embed + persist (chroma or sqlite depending on config)
+vm = VectorManager(storage_path="./metadata_vdb", force_reset=False, config=config)
+vm.index_documents(documents_payload)
+
+# 4) retrieve for RAG
+context_docs = vm.search_relevant_tables("sales from last month", limit=3)
+```
+
+### Backend comparison
+
+| Aspect | Chroma | SQLite |
+|---|---|---|
+| Storage files | Chroma persistent directory | `vectors.db` file |
+| Vector query | Native Chroma ANN query | Python cosine distance over stored vectors |
+| Metadata filtering | Native `where` filter | JSON metadata filter in Python |
+| Dependency profile | Requires `chromadb` | Uses stdlib `sqlite3` + optional NumPy |
+| Operational style | Dedicated vector DB behavior | Lightweight embedded local store |
+
+### Current limitations
+
+These points are based on current implementation behavior:
+
+- No hybrid ranking strategy yet: retrieval is distance-based over embeddings only (no lexical/BM25 rerank).
+- Relationship text is concise (`A.col -> B.col`), so very complex semantics are not explicitly encoded.
+- SQLite backend computes similarity in Python, so very large corpora may be slower than native vector engines.
+- `build_vector_db()` returns `indexed_documents` as total indexed documents (tables + relationships), while wording may be interpreted as only tables.
+- Schema extraction is structural (tables/columns/FKs). It does not ingest business definitions, comments, or curated ontology unless you add them as extra documents.
+
+In practice, this still provides strong RAG context for SQL generation because table fields and foreign-key topology are the highest-value grounding signals.
 
 ## License
 
