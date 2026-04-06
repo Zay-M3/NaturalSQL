@@ -6,7 +6,7 @@ from google.genai import types
 class GeminiEmbeddingProvider(EmbeddingProvider):
     """Embedding provider using Google's Gemini API."""
 
-    def __init__(self, api_key: str, model: str = "models/text-embedding-004"):
+    def __init__(self, api_key: str, model: str = "gemini-embedding-2-preview"):
         if not api_key:
             raise ValueError("Gemini API Key is required for Gemini provider.")
         try:

@@ -25,5 +25,5 @@ class AppConfig:
     vector_backend: Literal["chroma", "sqlite"] = "chroma"
     embedding_provider: Literal["local", "gemini"] = "local"
     gemini_api_key: str | None = None
-    gemini_embedding_model: str = "models/text-embedding-004"
+    gemini_embedding_model: str = "gemini-embedding-2-preview"
     vector_distance_threshold: float = 1.0
