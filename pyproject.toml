@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "naturalsql"
-version = "1.2.3"
+version = "1.2.5"
 description = "Generate SQL from natural language using DB schema + vector retrieval"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -355,6 +355,10 @@ These points are based on current implementation behavior:
 
 In practice, this still provides strong RAG context for SQL generation because table fields and foreign-key topology are the highest-value grounding signals.
 
+## Tests
+
+See [test/README.md](test/README.md) for testing instructions.
+
 ## License
 
 [Apache License 2.0](LICENSE)
