@@ -367,6 +367,10 @@ Estos puntos salen del comportamiento actual de implementacion:
 
 En la practica, esto sigue siendo muy util para RAG SQL porque columnas y topologia de llaves foraneas son las senales de contexto mas valiosas para grounding.
 
+## Pruebas
+
+Consulta [test/README.md](test/README.md) para instrucciones de pruebas.
+
 ## Licencia
 
 [Apache License 2.0](LICENSE)

@@ -28,3 +28,7 @@ build/
 *.egg-info/
 *.egg
 
+
+build_script.sh
+
+setup_library.py
