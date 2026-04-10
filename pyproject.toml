@@ -13,7 +13,7 @@ authors = [
   { name = "NaturalSQL Contributors" }
 ]
 
-keywords = ["sqlite", "sqlserver", "postgresql", "ai", "artifical-intelligence", "chromadb", "sentence-transformers", "gemini", "mysql"]
+keywords = ["sqlite", "sqlserver", "postgresql", "ai", "artificial-intelligence", "chromadb", "sentence-transformers", "gemini", "mysql"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -43,6 +43,8 @@ all-db = [
 
 [project.urls]
 Homepage = "https://pypi.org/project/naturalsql/"
+Repository = "https://github.com/Zay-M3/NaturalSQL"
+Documentation = "https://github.com/Zay-M3/NaturalSQL#readme"
 
 [tool.setuptools]
 include-package-data = true
