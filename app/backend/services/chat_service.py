@@ -56,7 +56,7 @@ class ChatService():
             sql_query += token
         
         connec = await asyncio.to_thread(
-            psycopg2.connect(), 
+            psycopg2.connect, 
             os.getenv("DB_URL_SPECT")
         )
         try:
