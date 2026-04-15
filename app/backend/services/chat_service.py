@@ -56,7 +56,9 @@ class ChatService():
             sql_query += token
         
         connec = await asyncio.to_thread(
-            psycopg2.connect(os.getenv("DB_URL_SPECT")))
+            psycopg2.connect(), 
+            os.getenv("DB_URL_SPECT")
+        )
         try:
             query = QuerysConsult(connection=connec)
             columns, rows = await asyncio.to_thread(query.execute_query, sql_query)
