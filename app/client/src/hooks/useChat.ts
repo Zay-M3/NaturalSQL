@@ -54,7 +54,7 @@ export const useChat = () => {
 
         //llamando a la pide chat /api/chat/message/
         try {
-            const response = await fetch(`${apiBaseUrl}/api/chat/message/`, {
+            const response = await fetch(`${apiBaseUrl}/api/chat/message`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
