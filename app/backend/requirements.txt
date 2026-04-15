@@ -1,0 +1,8 @@
+fastapi==0.135.3
+firebase_admin==7.4.0
+naturalsql==1.2.5
+nolimit_ai==0.1.1
+psycopg2==2.9.11
+pydantic==2.13.0
+python-dotenv==1.2.2
+slowapi==0.1.9
