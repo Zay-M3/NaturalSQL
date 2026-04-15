@@ -1,4 +1,5 @@
 
+import asyncio
 import os 
 
 from dotenv import load_dotenv
@@ -19,6 +20,9 @@ nsql = NaturalSQL(
     gemini_embedding_model="gemini-embedding-2-preview",
 )
 
+# Build vector DB once at startup
+nsql.build_vector_db(storage_path="./vector_db")
+
 nlai = NolimitAI()
 
 nlai.set_config(
@@ -35,7 +39,6 @@ class ChatService():
         pass
 
     def search_with_nsql(self, message:str) -> list:
-        nsql.build_vector_db(storage_path="./vector_db")
         response = nsql.search(request=message, storage_path="./vector_db", limit=10)
         return response
     
@@ -52,10 +55,11 @@ class ChatService():
         async for token in nlai.chat(promt, model="openai/gpt-4o-mini"):
             sql_query += token
         
-        connec = psycopg2.connect(os.getenv("DB_URL_SPECT"))
+        connec = await asyncio.to_thread(
+            psycopg2.connect(os.getenv("DB_URL_SPECT")))
         try:
             query = QuerysConsult(connection=connec)
-            columns, rows = query.execute_query(sql_query)
+            columns, rows = await asyncio.to_thread(query.execute_query, sql_query)
 
             promt_response = prompt.prompt_query(message, {"columns": columns, "rows": rows})
 

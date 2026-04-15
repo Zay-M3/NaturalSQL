@@ -62,21 +62,25 @@ export const useChat = () => {
                 body: JSON.stringify({ message: trimmed }),
             })
 
+            const appendAssistantMessage = (content: string) => {
+                setMessages((prev) => [
+                   ...prev,
+                    {
+                        id: nextIdRef.current,  
+                        role: 'assistant',
+                        content,
+                    },
+                ])
+                nextIdRef.current += 1
+            }
+
             if (!response.ok) {
                 let errorMessage = 'Error al procesar la solicitud.'
                 if (response.status === 403) {
                     errorMessage = 'Chat quota reached'
                 }
 
-                //Seteamos un mensaje de error en el chat
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: nextIdRef.current,
-                        role: 'assistant',
-                        content: errorMessage,
-                    }
-                ])
+                appendAssistantMessage(errorMessage)
 
                 throw new Error(`Error en la respuesta del servidor: ${response.statusText}`)
             }

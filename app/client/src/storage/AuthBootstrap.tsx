@@ -7,6 +7,8 @@ export const AuthBootstrap = () => {
 
   useEffect(() => {
     initAuthListener()
+    const cleanup = initAuthListener()
+    return cleanup
   }, [initAuthListener])
 
   return null

@@ -14,7 +14,7 @@ type AuthState = {
   isLoading: boolean
   error: string | null
   isInitialized: boolean
-  initAuthListener: () => void
+  initAuthListener: () => void | (() => void)
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   incrementMessagesChat: () => void
@@ -28,7 +28,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
   isInitialized: false,
   initAuthListener: () => {
-    onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+    return onAuthStateChanged(firebaseAuth, (firebaseUser) => {
       if (!firebaseUser) {
         set({ user: null, isInitialized: true })
         return
