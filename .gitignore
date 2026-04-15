@@ -18,9 +18,7 @@ __pycache__/
 metadata_vdb/
 
 # Archivos de pruebas locales
-main.py
 naturalsql/main.py
-main.py*
 
 # Build artifacts
 dist/
@@ -28,7 +26,10 @@ build/
 *.egg-info/
 *.egg
 
+firebase-service-account.json
 
 build_script.sh
 
 setup_library.py
+
+SECURITY_REVIEW.md
