@@ -1,6 +1,7 @@
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
 import { create } from 'zustand'
 
+import { apiBaseUrl } from '../config/apiBase'
 import { firebaseAuth } from './firebase'
 
 type AuthUser = {
@@ -19,8 +20,6 @@ type AuthState = {
   logout: () => Promise<void>
   incrementMessagesChat: () => void
 }
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
