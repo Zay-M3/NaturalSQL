@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, SyntheticEvent } from 'react'
 
+import { apiBaseUrl } from '../config/apiBase'
 import { useAuthStore } from '../storage/authStore'
 
 export type ChatMessage = {
@@ -53,7 +54,7 @@ export const useChat = () => {
 
         //llamando a la pide chat /api/chat/message/
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/chat/message/`, {
+            const response = await fetch(`${apiBaseUrl}/api/chat/message/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
