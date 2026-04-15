@@ -1,4 +1,5 @@
 fastapi==0.135.3
+uvicorn==0.35.0
 firebase_admin==7.4.0
 naturalsql==1.2.5
 nolimit_ai==0.1.1
