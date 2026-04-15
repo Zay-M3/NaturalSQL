@@ -1,7 +1,9 @@
 import json
 import os
 from dataclasses import dataclass
+from dotenv import load_dotenv
 
+load_dotenv()
 
 def _parse_origins(value: str) -> list[str]:
     if not value:
