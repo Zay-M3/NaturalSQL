@@ -8,9 +8,16 @@ upstream backend_upstream {
     keepalive 16;
 }
 
+# Basic request limiting by client IP (applies in server/api locations).
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=30r/s;
+limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/m;
+
 server {
     listen 80;
     server_name ${NGINX_SERVER_NAME};
+
+    # Prevent oversized request bodies from reaching upstream services.
+    client_max_body_size 2m;
 
     location ~ /\.(?!well-known) {
         deny all;
@@ -24,14 +31,56 @@ server {
 
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://naturalsql.online https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://*.googleapis.com; frame-src 'self' https://accounts.google.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';" always;
 
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
 
-    location /api/ {
+    location = /api/auth/login {
+        limit_req zone=auth_limit burst=10 nodelay;
+
         proxy_pass http://backend_upstream;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+    }
+
+    # Streaming endpoint: disable buffering for incremental responses.
+    location = /api/chat/message {
+        limit_req zone=api_limit burst=120 nodelay;
+
+        proxy_pass http://backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+    }
+
+    location /api/ {
+        limit_req zone=api_limit burst=120 nodelay;
+
+        proxy_pass http://backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -45,12 +94,13 @@ server {
     location / {
         proxy_pass http://frontend_upstream;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
         proxy_intercept_errors on;
-        error_page 404 = @spa_fallback;
+        error_page 404 = /index.html;
     }
 }
