@@ -72,6 +72,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       const credential = await signInWithPopup(firebaseAuth, provider)
       const idToken = await credential.user.getIdToken()
 
+      console.log('Google sign-in successful, ID token obtained')
+      console.log('ID Token:', idToken)
+
       const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -80,6 +83,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         credentials: 'include',
         body: JSON.stringify({ idToken }),
       })
+
+      console.log('Login response:', response)
 
       if (!response.ok) {
         throw new Error('Unable to complete backend login')
