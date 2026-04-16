@@ -1,5 +1,5 @@
 
-import { createBrowserRouter } from "react-router-dom";
+import { Navigate, createBrowserRouter } from "react-router-dom";
 import { Chat } from "@pages/Chat";
 import About from "@pages/About";
 import Documentation from "@pages/Documentation";
@@ -23,6 +23,10 @@ export const router = createBrowserRouter([
             {
                 path: "/documentation",
                 element: <Documentation />
+            },
+            {
+                path: "*",
+                element: <Navigate to="/" replace />
             }
         ]
     }

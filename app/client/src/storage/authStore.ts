@@ -119,7 +119,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         credentials: 'include',
       })
     } catch (error) {
-      console.error('Backend logout failed:', error)
+      set({
+        error: error instanceof Error ? error.message : 'Logout failed',
+        isLoading: false,
+      })
+      return
     }
     try {
       await signOut(firebaseAuth)

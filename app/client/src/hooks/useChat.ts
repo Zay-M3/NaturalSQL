@@ -142,7 +142,6 @@ export const useChat = () => {
 
 
         } catch (error) {
-            console.error('Error al enviar el mensaje:', error)
             setIsLoading(false)
         } finally {
             setIsLoading(false)
