@@ -1,6 +1,8 @@
 
 import asyncio
-import os 
+import logging
+import os
+import sqlite3
 
 from dotenv import load_dotenv
 from naturalsql import NaturalSQL
@@ -11,6 +13,9 @@ import psycopg2
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+VECTOR_DB_PATH = "./vector_db"
+
 nsql = NaturalSQL(
     db_url=os.getenv("DB_URL_SPECT"),
     db_type="postgresql",
@@ -20,8 +25,61 @@ nsql = NaturalSQL(
     gemini_embedding_model="gemini-embedding-2-preview",
 )
 
-# Build vector DB once at startup
-nsql.build_vector_db(storage_path="./vector_db")
+def _count_indexed_vectors(storage_path: str) -> int:
+    """Return number of indexed vector documents from sqlite store."""
+    db_path = os.path.join(storage_path, "vectors.db")
+    if not os.path.exists(db_path):
+        return 0
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM vectors")
+            return int(cur.fetchone()[0])
+    except Exception:
+        logger.exception("Error counting vectors in %s", db_path)
+        return 0
+
+
+def _bootstrap_vector_db() -> None:
+    """Build or repair vector DB, avoiding partial-cache reuse."""
+    before_count = _count_indexed_vectors(VECTOR_DB_PATH)
+    force_rebuild = before_count <= 1
+
+    if force_rebuild:
+        logger.warning(
+            "Detected partial/empty vector index (%s rows). Forcing rebuild.",
+            before_count,
+        )
+
+    try:
+        result = nsql.build_vector_db(
+            storage_path=VECTOR_DB_PATH,
+            forced_reset=force_rebuild,
+        )
+
+        after_count = _count_indexed_vectors(VECTOR_DB_PATH)
+
+        # If a cached index was reused but still looks partial, repair once.
+        if result.get("from_cache") and after_count <= 1:
+            logger.warning(
+                "Cached vector index still partial (%s rows). Rebuilding.",
+                after_count,
+            )
+            nsql.build_vector_db(storage_path=VECTOR_DB_PATH, forced_reset=True)
+            after_count = _count_indexed_vectors(VECTOR_DB_PATH)
+
+        logger.info(
+            "Vector DB bootstrap completed. rows_before=%s rows_after=%s",
+            before_count,
+            after_count,
+        )
+    except Exception:
+        logger.exception("Failed to bootstrap vector DB")
+
+
+# Build vector DB once at startup (self-heals partial cache states)
+_bootstrap_vector_db()
 
 nlai = NolimitAI()
 
@@ -39,7 +97,7 @@ class ChatService():
         pass
 
     def search_with_nsql(self, message:str) -> list:
-        response = nsql.search(request=message, storage_path="./vector_db", limit=10)
+        response = nsql.search(request=message, storage_path=VECTOR_DB_PATH, limit=10)
         return response
     
     async def process_context_with_llm(self, message:str):
