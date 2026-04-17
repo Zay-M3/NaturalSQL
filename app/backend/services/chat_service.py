@@ -69,10 +69,12 @@ def _bootstrap_vector_db() -> None:
             nsql.build_vector_db(storage_path=VECTOR_DB_PATH, forced_reset=True)
             after_count = _count_indexed_vectors(VECTOR_DB_PATH)
 
-        logger.info(
-            "Vector DB bootstrap completed. rows_before=%s rows_after=%s",
+        logger.warning(
+            "Vector DB bootstrap completed. rows_before=%s rows_after=%s from_cache=%s indexed_documents=%s",
             before_count,
             after_count,
+            result.get("from_cache"),
+            result.get("indexed_documents"),
         )
     except Exception:
         logger.exception("Failed to bootstrap vector DB")
