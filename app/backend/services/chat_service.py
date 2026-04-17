@@ -19,7 +19,7 @@ VECTOR_DB_PATH = "./vector_db"
 nsql = NaturalSQL(
     db_url=os.getenv("DB_URL_SPECT"),
     db_type="postgresql",
-    vector_backend="sqlite",
+    vector_backend="chroma",
     embedding_provider="gemini",
     gemini_api_key=os.getenv("GEMINI_API_KEY"),
     gemini_embedding_model="gemini-embedding-2-preview",
@@ -103,10 +103,9 @@ class ChatService():
         return response
     
     async def process_context_with_llm(self, message:str):
-        # Aquí iría la lógica para procesar el contexto con un modelo de lenguaje
+        
         context = self.search_with_nsql(message)
-                
-        # Aquí iría la lógica para generar una respuesta utilizando el contexto y el mensaje
+       
         
         promt = prompt.build_prompt(relevant_tables=context, user_question=message, db_type="postgresql")
         
