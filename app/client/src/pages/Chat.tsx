@@ -48,6 +48,51 @@ export const Chat = () => {
                         <p className="font-serif text-4xl tracking-tight text-emerald-800/80 sm:text-5xl">NaturalSQL</p>
                     </li>
                     <h2 className="text-2xl text-slate-800 text-center">Please log in to access the chat.</h2>
+
+                    <div className="mt-6 px-4 sm:px-6">
+                        <Callout title="How the playground works">
+                            <p className="mb-3">
+                                This chat is connected to a fixed playground database. Ask questions that are related to
+                                the existing schema and tables shown below.
+                            </p>
+                            <p className="mb-3 text-sm text-slate-700">
+                                Questions outside this database context can produce irrelevant answers.
+                            </p>
+                            <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+                                {playgroundTables.map((table) => (
+                                    <li key={table} className="font-medium text-emerald-900/90">
+                                        {table}
+                                    </li>
+                                ))}
+                            </ul>
+                        </Callout>
+                    </div>
+
+                    <div className="mt-4 px-4 sm:px-6">
+                        <Callout title="Use NaturalSQL in your own project">
+                            <p className="mb-4 text-sm text-slate-700">
+                                Explore and install the package from your preferred ecosystem.
+                            </p>
+                            <div className="flex flex-wrap gap-3">
+                                <a
+                                    href="https://www.npmjs.com/package/naturalsql"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center justify-center rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+                                >
+                                    Open on npm
+                                </a>
+                                <a
+                                    href="https://pypi.org/project/naturalsql/"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center justify-center rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50"
+                                >
+                                    Open on PyPI
+                                </a>
+                            </div>
+                        </Callout>
+                    </div>
                 </div>
             </main>
         )
@@ -179,8 +224,3 @@ export const Chat = () => {
     )
 }
 
-//  {messages.length === 0 ? (
-//                             <li className="flex items-center justify-center py-8">
-//                                 <p className="font-serif text-4xl tracking-tight text-slate-300 sm:text-5xl">NaturalSQL</p>
-//                             </li>
-//                         ) : null}
