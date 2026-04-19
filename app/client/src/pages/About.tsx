@@ -20,7 +20,7 @@ export default function About() {
                                 database structure.
                             </p>
 
-                            <img src="/img/naturalsql.png" alt="NaturalSQL logo" className="h-60 w-auto" />
+                            <img src="/img/naturalsql.png" alt="NaturalSQL logo" className="mx-auto h-72 w-auto sm:h-80" />
                         </div>
 
                         <GitHubProjectBadge
@@ -53,6 +53,23 @@ export default function About() {
                                 Make SQL generation accessible, fast, and reliable without sacrificing control over your data workflow.
                             </p>
                         </div>
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                            TypeScript version contributor
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                            Main contributor and builder of the TypeScript version.
+                        </p>
+                        <GitHubProjectBadge
+                            owner="JosephAnderson234"
+                            repo="NaturalSQL"
+                            variant="detailed"
+                            showCreator={false}
+                            showBio={true}
+                            className="mt-3 rounded-xl border border-emerald-100 bg-white/90"
+                        />
                     </div>
                 </section>
             </div>

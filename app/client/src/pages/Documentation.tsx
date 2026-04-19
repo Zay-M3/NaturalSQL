@@ -9,10 +9,12 @@ import { Tabs } from '../components/ui/Tabs'
 import { Topbar } from '../components/ui/Topbar'
 
 const DOCS_VERSION = '1.2.5'
+const TYPESCRIPT_DOCS_VERSION = '1.2.5'
 
 const sidebarItems = [
   { id: 'problem-solution', label: 'Problem & Solution' },
   { id: 'installation', label: 'Installation' },
+  { id: 'typescript-docs', label: 'TypeScript' },
   { id: 'sql-engines', label: 'Supported SQL Engines' },
   { id: 'quick-start', label: 'Quick Start' },
   { id: 'cache-performance', label: 'Cache & Performance' },
@@ -141,6 +143,101 @@ const e2eTabs = [
   },
 ]
 
+const tsInstallCode = [
+  '# Base package',
+  'npm i naturalsql',
+  '',
+  '# Chroma + local embeddings',
+  'npm i chromadb @xenova/transformers',
+  '',
+  '# SQLite + local embeddings',
+  'npm i better-sqlite3 @xenova/transformers',
+  '',
+  '# SQLite + Gemini embeddings',
+  'npm i better-sqlite3 @google/generative-ai',
+  '',
+  '# Chroma + Gemini embeddings',
+  'npm i chromadb @google/generative-ai',
+  '',
+  '# PostgreSQL driver support',
+  'npm i pg',
+  '',
+  '# MySQL driver support',
+  'npm i mysql2',
+  '',
+  '# SQL Server driver support',
+  'npm i mssql',
+].join('\n')
+
+const tsQuickStartCode = [
+  'import { NaturalSQL } from "naturalsql";',
+  '',
+  'const nsql = new NaturalSQL({',
+  '  dbUrl: "postgresql://user:password@localhost:5432/mydb",',
+  '  dbType: "postgresql"',
+  '});',
+  '',
+  'const result = await nsql.buildVectorDb("./metadata_vdb");',
+  'console.log(`Indexed tables: ${result.indexedTables}`);',
+  'console.log(`From cache: ${result.fromCache}`);',
+  '',
+  'const tables = await nsql.search("Show me sales from last month", {',
+  '  storagePath: "./metadata_vdb",',
+  '  limit: 3',
+  '});',
+  '',
+  'for (const table of tables) {',
+  '  console.log(table);',
+  '}',
+].join('\n')
+
+const tsE2EChromaLocalCode = [
+  'import { NaturalSQL } from "naturalsql";',
+  '',
+  'const nsql = new NaturalSQL({',
+  '  dbUrl: "postgresql://user:pass@localhost:5432/mydb",',
+  '  dbType: "postgresql",',
+  '  vectorBackend: "chroma",',
+  '  embeddingProvider: "local",',
+  '  vectorDistanceThreshold: 0.35',
+  '});',
+  '',
+  'await nsql.buildVectorDb("./metadata_vdb", { forceReset: false });',
+  'const tables = await nsql.search("sales for the last month", {',
+  '  storagePath: "./metadata_vdb",',
+  '  limit: 3',
+  '});',
+  'console.log(tables);',
+].join('\n')
+
+const tsE2ESqliteGeminiCode = [
+  'import { NaturalSQL } from "naturalsql";',
+  '',
+  'const nsql = new NaturalSQL({',
+  '  dbUrl: "sqlite:///./app.db",',
+  '  dbType: "sqlite",',
+  '  vectorBackend: "sqlite",',
+  '  embeddingProvider: "gemini",',
+  '  geminiApiKey: process.env.GEMINI_API_KEY,',
+  '  geminiEmbeddingModel: "text-embedding-004"',
+  '});',
+  '',
+  'await nsql.buildVectorDb("./metadata_vdb_sqlite", { forceReset: false });',
+  'const tables = await nsql.search("users with recent purchases", {',
+  '  storagePath: "./metadata_vdb_sqlite",',
+  '  limit: 3',
+  '});',
+  'console.log(tables);',
+].join('\n')
+
+const tsBuildPromptCode = [
+  'import { buildPrompt } from "naturalsql";',
+  '',
+  'const prompt = buildPrompt(tables, "Show me sales from last month");',
+].join('\n')
+
+const tsDevCommandsCode = ['npm run test', 'npm run typecheck', 'npm run build'].join('\n')
+
 export default function Documentation() {
   return (
     <main className="h-full min-h-0 overflow-y-auto bg-linear-to-b from-emerald-50 via-slate-50 to-white text-slate-900">
@@ -182,6 +279,199 @@ export default function Documentation() {
                 SQLite support uses Python&apos;s standard library. If you use Gemini embeddings, provide
                 <code> GEMINI_API_KEY </code> via environment variables.
               </Callout>
+            </Section>
+
+            <Section
+              id="typescript-docs"
+              eyebrow="TypeScript"
+              title="NaturalSQL TypeScript"
+              description="Lightweight library to convert your SQL database schema into a vector database, so LLMs can use real table/column context to generate more accurate SQL from natural language."
+            >
+              <Callout title={`Version v${TYPESCRIPT_DOCS_VERSION}`}>
+                Node.js <code>&gt;=18</code> is required. For Gemini, use <code>@google/generative-ai</code> and
+                environment variables like <code>GEMINI_API_KEY</code> (never hardcode secrets).
+              </Callout>
+              <Callout title="Problem">
+                Sometimes you want to interact with SQL databases through an LLM without pulling in large frameworks
+                with many unrelated features.
+              </Callout>
+              <Callout title="Solution">
+                NaturalSQL extracts your database schema, vectorizes it using a configurable backend
+                (<code>chroma</code> or <code>sqlite</code>) and embedding provider (<code>local</code> or
+                <code> gemini</code>), then retrieves relevant schema context for your LLM.
+              </Callout>
+
+              <StepCard step="01" title="Installation">
+                <CodeBlock title="install_typescript.sh" language="bash" code={tsInstallCode} />
+              </StepCard>
+
+              <StepCard step="02" title="Quick start">
+                <CodeBlock title="quickstart.ts" language="ts" code={tsQuickStartCode} />
+              </StepCard>
+
+              <StepCard step="03" title="Automatic cache">
+                <p>
+                  <code>buildVectorDb()</code> reuses vector storage when possible (same storage path + schema cache
+                  key), unless <code>forceReset: true</code> is provided.
+                </p>
+                <p>
+                  Also, <code>search()</code> reuses the in-memory <code>VectorManager</code> for the same
+                  <code> storagePath</code> to reduce repeated initialization cost.
+                </p>
+              </StepCard>
+
+              <StepCard step="04" title="Supported SQL engines">
+                <ul className="list-disc space-y-1 pl-6 text-slate-700">
+                  <li>PostgreSQL</li>
+                  <li>MySQL</li>
+                  <li>SQL Server</li>
+                  <li>SQLite</li>
+                </ul>
+              </StepCard>
+
+              <StepCard step="05" title="E2E examples">
+                <CodeBlock title="e2e_chroma_local.ts" language="ts" code={tsE2EChromaLocalCode} />
+                <div className="mt-3" />
+                <CodeBlock title="e2e_sqlite_gemini.ts" language="ts" code={tsE2ESqliteGeminiCode} />
+              </StepCard>
+
+              <StepCard step="06" title="API">
+                <p className="mb-3">
+                  <code>new NaturalSQL(options?)</code> creates an instance with DB and embedding configuration.
+                </p>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Parameter</th>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Default</th>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">dbUrl</td>
+                        <td className="px-4 py-3 text-slate-600">string | null</td>
+                        <td className="px-4 py-3 text-slate-600">null</td>
+                        <td className="px-4 py-3 text-slate-600">Database connection URL</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">dbType</td>
+                        <td className="px-4 py-3 text-slate-600">string</td>
+                        <td className="px-4 py-3 text-slate-600">sqlite</td>
+                        <td className="px-4 py-3 text-slate-600">postgresql, mysql, sqlite, sqlserver</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">normalizeEmbeddings</td>
+                        <td className="px-4 py-3 text-slate-600">boolean</td>
+                        <td className="px-4 py-3 text-slate-600">true</td>
+                        <td className="px-4 py-3 text-slate-600">Normalize embedding vectors</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">device</td>
+                        <td className="px-4 py-3 text-slate-600">string</td>
+                        <td className="px-4 py-3 text-slate-600">cpu</td>
+                        <td className="px-4 py-3 text-slate-600">Embedding device: cpu or cuda</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">vectorBackend</td>
+                        <td className="px-4 py-3 text-slate-600">chroma | sqlite</td>
+                        <td className="px-4 py-3 text-slate-600">sqlite</td>
+                        <td className="px-4 py-3 text-slate-600">Vector backend</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">embeddingProvider</td>
+                        <td className="px-4 py-3 text-slate-600">local | gemini</td>
+                        <td className="px-4 py-3 text-slate-600">local</td>
+                        <td className="px-4 py-3 text-slate-600">Embedding provider</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">geminiApiKey</td>
+                        <td className="px-4 py-3 text-slate-600">string | null</td>
+                        <td className="px-4 py-3 text-slate-600">null</td>
+                        <td className="px-4 py-3 text-slate-600">Required when embeddingProvider=gemini</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">geminiEmbeddingModel</td>
+                        <td className="px-4 py-3 text-slate-600">string</td>
+                        <td className="px-4 py-3 text-slate-600">text-embedding-004</td>
+                        <td className="px-4 py-3 text-slate-600">Gemini embedding model</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">vectorDistanceThreshold</td>
+                        <td className="px-4 py-3 text-slate-600">number</td>
+                        <td className="px-4 py-3 text-slate-600">0.35</td>
+                        <td className="px-4 py-3 text-slate-600">Max distance threshold used by search()</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="mt-4 mb-2 font-medium text-slate-700">Supported backend/provider combinations</p>
+                <ul className="list-disc space-y-1 pl-6 text-slate-700">
+                  <li>chroma + local</li>
+                  <li>sqlite + local</li>
+                  <li>sqlite + gemini</li>
+                  <li>chroma + gemini</li>
+                </ul>
+
+                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Method</th>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">
+                          await nsql.buildVectorDb(storagePath, options?)
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          Extracts schema and indexes it. Supports <code>forceReset</code> and optional
+                          <code> cacheKey</code>. Returns <code>storagePath</code>, <code>indexedTables</code>, and
+                          <code> fromCache</code>.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">await nsql.search(request, options?)</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          Retrieves semantically relevant tables. Options include <code>storagePath</code> (default
+                          ./metadata_vdb) and <code>limit</code> (default 3).
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-700">
+                          buildPrompt(relevantTables, userQuestion)
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          Helper to create an LLM prompt from retrieved tables and a user question.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-4">
+                  <CodeBlock title="build_prompt.ts" language="ts" code={tsBuildPromptCode} />
+                </div>
+              </StepCard>
+
+              <StepCard step="07" title="Technical strategy">
+                <ol className="list-decimal space-y-2 pl-6 text-slate-700">
+                  <li>Connection via native drivers (pg, mysql2, mssql) or SQLite support.</li>
+                  <li>Schema extraction via engine-specific metadata queries or PRAGMA for SQLite.</li>
+                  <li>Vectorization into semantic documents indexed in chroma or sqlite.</li>
+                  <li>Retrieval via nearest-neighbor search with vectorDistanceThreshold filtering.</li>
+                  <li>Caching through schema-key reuse and in-memory manager reuse.</li>
+                </ol>
+              </StepCard>
+
+              <StepCard step="08" title="Development">
+                <CodeBlock title="dev_commands.sh" language="bash" code={tsDevCommandsCode} />
+              </StepCard>
             </Section>
 
             <Section id="sql-engines" eyebrow="Compatibility" title="Supported SQL engines">
